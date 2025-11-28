@@ -401,7 +401,6 @@ function initSortModal() {
   // Handle sort option selection
   sortOptionBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
-      // Remove active class from all buttons
       sortOptionBtns.forEach((b) => b.classList.remove("active"));
       // Add active class to clicked button
       btn.classList.add("active");
@@ -470,44 +469,79 @@ function renderMenu(items) {
   if (!elements.menuGrid) return;
   
   if (!Array.isArray(items) || items.length === 0) {
-    elements.menuGrid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: rgba(255, 255, 255, 0.6);">
-        <p>No items found.</p>
-      </div>
-    `;
+    const emptyMessage = document.createElement("div");
+    emptyMessage.style.cssText = "grid-column: 1 / -1; text-align: center; padding: 2rem; color: rgba(255, 255, 255, 0.6);";
+    const p = document.createElement("p");
+    p.textContent = "No items found.";
+    emptyMessage.appendChild(p);
+    elements.menuGrid.innerHTML = "";
+    elements.menuGrid.appendChild(emptyMessage);
     return;
   }
   
   const sortedItems = sortMenuItems(items, state.currentSort);
   const fragment = document.createDocumentFragment();
-  const tempDiv = document.createElement("div");
   
-  tempDiv.innerHTML = sortedItems
-    .map((item) => {
-      const name = escapeHtml(item.name || "");
-      const price = parseFloat(item.price) || 0;
-      const description = escapeHtml(item.description || "");
-      const category = escapeHtml(item.category || "");
-      
-      return `
-        <div class="menu-item" data-id="${item.id || ""}">
-          <div class="menu-item-content">
-            <div class="item-header">
-              <h3 class="item-name">${name}</h3>
-              <span class="item-price">$${price.toFixed(2)}</span>
-            </div>
-            <p class="item-desc">${description}</p>
-            <div class="item-footer">
-              <span class="item-category">${category}</span>
-            </div>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-  
-  while (tempDiv.firstChild) {
-    fragment.appendChild(tempDiv.firstChild);
+  // Build DOM elements directly for better performance (avoids innerHTML parsing)
+  for (let i = 0; i < sortedItems.length; i++) {
+    const item = sortedItems[i];
+    const name = escapeHtml(item.name || "");
+    const price = parseFloat(item.price) || 0;
+    const description = escapeHtml(item.description || "");
+    const category = escapeHtml(item.category || "");
+    
+    const menuItem = document.createElement("div");
+    menuItem.className = "menu-item";
+    menuItem.dataset.id = item.id || "";
+    
+    const content = document.createElement("div");
+    content.className = "menu-item-content";
+    
+    // Add image if available
+    if (item.image) {
+      const imageContainer = document.createElement("div");
+      imageContainer.className = "menu-item-image-container";
+      const img = document.createElement("img");
+      img.className = "menu-item-image";
+      img.src = item.image;
+      img.alt = name;
+      img.loading = "lazy";
+      imageContainer.appendChild(img);
+      content.appendChild(imageContainer);
+    }
+    
+    const header = document.createElement("div");
+    header.className = "item-header";
+    
+    const nameEl = document.createElement("h3");
+    nameEl.className = "item-name";
+    nameEl.textContent = name;
+    
+    const priceEl = document.createElement("span");
+    priceEl.className = "item-price";
+    priceEl.textContent = `$${price.toFixed(2)}`;
+    
+    header.appendChild(nameEl);
+    header.appendChild(priceEl);
+    
+    const descEl = document.createElement("p");
+    descEl.className = "item-desc";
+    descEl.textContent = description;
+    
+    const footer = document.createElement("div");
+    footer.className = "item-footer";
+    
+    const categoryEl = document.createElement("span");
+    categoryEl.className = "item-category";
+    categoryEl.textContent = category;
+    
+    footer.appendChild(categoryEl);
+    
+    content.appendChild(header);
+    content.appendChild(descEl);
+    content.appendChild(footer);
+    menuItem.appendChild(content);
+    fragment.appendChild(menuItem);
   }
   
   elements.menuGrid.innerHTML = "";

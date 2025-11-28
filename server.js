@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Express server for menu management API with authentication
+ * @author MobiTouch.online
+ * @version 2.0.0
+ */
+
 require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
@@ -46,7 +52,9 @@ const cache = {
   settings: null,
   menuDataTimestamp: 0,
   settingsTimestamp: 0,
-  CACHE_TTL: 5000
+  CACHE_TTL: process.env.NODE_ENV === "production" ? 10000 : 5000, // Longer cache in production
+  maxId: null, // Cache max ID to avoid recalculating
+  maxIdTimestamp: 0
 };
 
 /**
@@ -89,6 +97,9 @@ async function readMenuData() {
 
     cache.menuData = parsed;
     cache.menuDataTimestamp = now;
+    // Update max ID cache
+    cache.maxId = getMaxId(parsed);
+    cache.maxIdTimestamp = now;
     
     return parsed;
   } catch (error) {
@@ -101,6 +112,22 @@ async function readMenuData() {
     // Return cached data if available, otherwise empty array
     return cache.menuData || [];
   }
+}
+
+/**
+ * Get maximum ID from menu data (optimized - avoids Math.max with spread)
+ * @param {Array} data - Array of menu items
+ * @returns {number} Maximum ID
+ */
+function getMaxId(data) {
+  if (!Array.isArray(data) || data.length === 0) return 0;
+  
+  let maxId = 0;
+  for (let i = 0; i < data.length; i++) {
+    const id = parseInt(data[i].id) || 0;
+    if (id > maxId) maxId = id;
+  }
+  return maxId;
 }
 
 /**
@@ -118,8 +145,11 @@ async function writeMenuData(data) {
     await fs.writeFile(tempFile, JSON.stringify(data, null, 2), "utf8");
     await fs.rename(tempFile, DATA_FILE);
     
+    // Invalidate cache and update max ID
     cache.menuData = null;
     cache.menuDataTimestamp = 0;
+    cache.maxId = getMaxId(data);
+    cache.maxIdTimestamp = Date.now();
     
     return true;
   } catch (error) {
@@ -275,11 +305,8 @@ function validateMenuItem(item) {
   if (item.category.length > 100) {
     return { valid: false, error: "Category must be 100 characters or less" };
   }
-  if (typeof item.price !== "number" || isNaN(item.price) || item.price < 0) {
-    return { valid: false, error: "Price must be a valid non-negative number" };
-  }
-  if (item.price > 10000) {
-    return { valid: false, error: "Price must be less than $10,000" };
+  if (typeof item.price !== "number" || isNaN(item.price) || item.price < 0 || item.price > 500) {
+    return { valid: false, error: "Price must be a number between 0 and 500" };
   }
   if (item.description && (typeof item.description !== "string" || item.description.length > 1000)) {
     return { valid: false, error: "Description must be a string with 1000 characters or less" };
@@ -365,13 +392,25 @@ app.get("/api/menu", requireAuth, async (req, res, next) => {
  */
 app.post("/api/menu", requireAuth, async (req, res, next) => {
   try {
-    const { name, category, price, description } = req.body;
+    const { name, category, price, description, tags, image } = req.body;
+
+    // Handle tags - can be array or comma-separated string
+    let tagsArray = [];
+    if (tags) {
+      if (Array.isArray(tags)) {
+        tagsArray = tags.map(t => String(t).trim()).filter(t => t);
+      } else if (typeof tags === 'string') {
+        tagsArray = tags.split(",").map(t => t.trim()).filter(t => t);
+      }
+    }
 
     const newItem = {
       name: String(name || "").trim(),
       category: String(category || "").trim(),
       price: parseFloat(price),
-      description: String(description || "").trim()
+      description: String(description || "").trim(),
+      tags: tagsArray,
+      image: image || null // Store base64 image or null
     };
 
     const validation = validateMenuItem(newItem);
@@ -383,9 +422,14 @@ app.post("/api/menu", requireAuth, async (req, res, next) => {
     }
 
     const menuData = await readMenuData();
-    const maxId = menuData.length > 0 
-      ? Math.max(...menuData.map((item) => item.id || 0)) 
-      : 0;
+    // Use cached max ID if available and recent, otherwise calculate
+    const now = Date.now();
+    let maxId = cache.maxId;
+    if (maxId === null || (now - cache.maxIdTimestamp) > cache.CACHE_TTL) {
+      maxId = getMaxId(menuData);
+      cache.maxId = maxId;
+      cache.maxIdTimestamp = now;
+    }
     const newId = maxId + 1;
 
     newItem.id = newId;
@@ -413,7 +457,7 @@ app.post("/api/menu", requireAuth, async (req, res, next) => {
 app.put("/api/menu/:id", requireAuth, async (req, res, next) => {
   try {
     const itemId = parseInt(req.params.id);
-    const { name, category, price, description } = req.body;
+    const { name, category, price, description, tags, image } = req.body;
 
     if (isNaN(itemId) || itemId <= 0) {
       return res.status(400).json({ 
@@ -422,11 +466,26 @@ app.put("/api/menu/:id", requireAuth, async (req, res, next) => {
       });
     }
 
+    // Handle tags - can be array or comma-separated string
+    let tagsArray = [];
+    if (tags) {
+      if (Array.isArray(tags)) {
+        tagsArray = tags.map(t => String(t).trim()).filter(t => t);
+      } else if (typeof tags === 'string') {
+        tagsArray = tags.split(",").map(t => t.trim()).filter(t => t);
+      }
+    }
+
+    const menuData = await readMenuData();
+    const existingItem = menuData.find((item) => item.id === itemId);
+    
     const updatedItem = {
       name: String(name || "").trim(),
       category: String(category || "").trim(),
       price: parseFloat(price),
-      description: String(description || "").trim()
+      description: String(description || "").trim(),
+      tags: tagsArray,
+      image: image !== undefined ? image : (existingItem?.image || null) // Keep existing image if not provided
     };
 
     const validation = validateMenuItem(updatedItem);
@@ -437,7 +496,6 @@ app.put("/api/menu/:id", requireAuth, async (req, res, next) => {
       });
     }
 
-    const menuData = await readMenuData();
     const itemIndex = menuData.findIndex((item) => item.id === itemId);
 
     if (itemIndex === -1) {
@@ -501,6 +559,123 @@ app.delete("/api/menu/:id", requireAuth, async (req, res, next) => {
       res.status(500).json({ 
         success: false, 
         message: "Failed to delete item" 
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/menu/export
+ * Export all menu data as JSON
+ */
+app.get("/api/menu/export", requireAuth, async (req, res, next) => {
+  try {
+    const menuData = await readMenuData();
+    res.json({
+      success: true,
+      data: menuData,
+      count: menuData.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/menu/import
+ * Import menu data from JSON
+ */
+app.post("/api/menu/import", requireAuth, async (req, res, next) => {
+  try {
+    let data, replace;
+    
+    // Handle both JSON and form-data
+    if (req.body.data) {
+      data = req.body.data;
+      replace = req.body.replace === true || req.body.replace === "true";
+    } else if (req.body) {
+      // If body is directly the JSON array
+      data = req.body;
+      replace = false;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "No data provided"
+      });
+    }
+    
+    let importedItems;
+    try {
+      importedItems = typeof data === 'string' ? JSON.parse(data) : data;
+    } catch (parseError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid JSON format: " + parseError.message
+      });
+    }
+
+    if (!Array.isArray(importedItems)) {
+      return res.status(400).json({
+        success: false,
+        message: "Data must be an array of menu items"
+      });
+    }
+
+    // Validate imported items
+    const validItems = [];
+    for (const item of importedItems) {
+      const validation = validateMenuItem(item);
+      if (validation.valid) {
+        validItems.push({
+          name: String(item.name || "").trim(),
+          category: String(item.category || "").trim(),
+          price: parseFloat(item.price) || 0,
+          description: String(item.description || "").trim()
+        });
+      }
+    }
+
+    if (validItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid items found in import data"
+      });
+    }
+
+    let finalData;
+    if (replace === true || replace === "true") {
+      // Replace all existing items
+      finalData = validItems;
+    } else {
+      // Merge with existing items
+      const existingData = await readMenuData();
+      finalData = [...existingData, ...validItems];
+    }
+
+    // Assign new IDs to imported items (optimized)
+    let maxId = getMaxId(finalData);
+    let nextId = maxId + 1;
+    
+    for (let i = 0; i < finalData.length; i++) {
+      if (!finalData[i].id) {
+        finalData[i].id = nextId++;
+      }
+    }
+
+    const success = await writeMenuData(finalData);
+    if (success) {
+      res.json({
+        success: true,
+        message: `Successfully imported ${validItems.length} item${validItems.length !== 1 ? 's' : ''}`,
+        count: validItems.length,
+        total: finalData.length
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to save imported data"
       });
     }
   } catch (error) {

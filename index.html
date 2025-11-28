@@ -39,7 +39,22 @@
 
     <header>
       <div class="logo-container">
-        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='100'%3E%3Crect width='200' height='100' fill='%230d3b2e'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23ffffff' font-family='Arial' font-size='20'%3ELogo%3C/text%3E%3C/svg%3E" alt="Placeholder Logo" class="logo" loading="lazy" />
+        <svg class="logo" width="200" height="100" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
+          <rect width="200" height="100" fill="#0d3b2e" rx="8"/>
+          <g transform="translate(20, 20)">
+            <!-- Menu/List Icon -->
+            <rect x="0" y="0" width="60" height="60" fill="none" stroke="#ffd700" stroke-width="3" rx="4"/>
+            <line x1="10" y1="15" x2="50" y2="15" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="10" y1="30" x2="50" y2="30" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="10" y1="45" x2="50" y2="45" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- Fork and Knife -->
+            <g transform="translate(70, 10)">
+              <path d="M5 5 L5 25 M5 10 Q8 10 10 8 Q12 6 10 4 Q8 2 5 2 Q2 2 0 4 Q-2 6 0 8 Q2 10 5 10" stroke="#ffd700" stroke-width="2" fill="none" stroke-linecap="round"/>
+              <path d="M20 5 L20 25 M20 5 Q22 3 24 5 Q26 7 24 9 Q22 11 20 9" stroke="#ffd700" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </g>
+          </g>
+          <text x="100" y="65" font-family="'Bebas Neue', sans-serif" font-size="28" fill="#ffffff" text-anchor="middle" font-weight="bold">LOREM IPSUM</text>
+        </svg>
       </div>
     </header>
 
