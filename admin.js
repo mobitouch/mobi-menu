@@ -8,13 +8,6 @@
 // CONFIGURATION
 // ============================================================================
 
-/**
- * Development mode flag (set to false in production)
- * @type {boolean}
- */
-const IS_DEVELOPMENT =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1";
 
 // ============================================================================
 // STATE MANAGEMENT
@@ -34,6 +27,8 @@ const state = {
   selectedItems: new Set(),
   theme: "dark", // 'dark' or 'light'
   layout: "grid", // 'grid' or 'list'
+  newCategories: new Set(), // Track newly created categories that haven't been saved yet
+  initialFormState: null, // Store initial form state for change detection
 };
 
 // ============================================================================
@@ -82,6 +77,9 @@ const elements = {
   sidebar: null,
   sidebarToggle: null,
   statsSection: null,
+  categoriesSection: null,
+  categoriesList: null,
+  categoryCount: null,
   exportBtn: null,
   importBtn: null,
   previewMenuBtn: null,
@@ -103,6 +101,13 @@ const elements = {
   clearSearchBtn: null,
   themeToggleBtn: null,
   printMenuBtn: null,
+  categoryModal: null,
+  categoryModalTitle: null,
+  categoryModalInput: null,
+  categoryModalError: null,
+  categoryModalSave: null,
+  categoryModalCancel: null,
+  closeCategoryModal: null,
 };
 
 /**
@@ -161,6 +166,9 @@ function initializeElements() {
     elements.sidebar = document.getElementById("sidebar");
     elements.sidebarToggle = document.getElementById("sidebar-toggle");
     elements.statsSection = document.getElementById("stats-section");
+    elements.categoriesSection = document.getElementById("categories-section");
+    elements.categoriesList = document.getElementById("categories-list");
+    elements.categoryCount = document.getElementById("category-count");
     elements.exportBtn = document.getElementById("export-btn");
     elements.importBtn = document.getElementById("import-btn");
     elements.previewMenuBtn = document.getElementById("preview-menu-btn");
@@ -189,13 +197,18 @@ function initializeElements() {
     elements.themeToggleBtn = document.getElementById("theme-toggle-btn");
     elements.printMenuBtn = document.getElementById("print-menu-btn");
     elements.layoutToggleBtn = document.getElementById("layout-toggle-btn");
+    elements.categoryModal = document.getElementById("category-modal");
+    elements.categoryModalTitle = document.getElementById("category-modal-title");
+    elements.categoryModalInput = document.getElementById("category-modal-input");
+    elements.categoryModalError = document.getElementById("category-modal-error");
+    elements.categoryModalSave = document.getElementById("category-modal-save");
+    elements.categoryModalCancel = document.getElementById("category-modal-cancel");
+    elements.closeCategoryModal = document.getElementById("close-category-modal");
 
     if (!elements.loginForm) {
     }
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error initializing elements:", error);
-    }
+    // Silently handle initialization errors
   }
 }
 
@@ -208,21 +221,13 @@ function initializeElements() {
  */
 function addEventListener(element, event, handler, options = {}) {
   if (!element || typeof element.addEventListener !== "function") {
-    if (IS_DEVELOPMENT) {
-      console.warn(
-        "Cannot add event listener: element is not a valid DOM element",
-        element
-      );
-    }
     return;
   }
   try {
     element.addEventListener(event, handler, options);
     eventListeners.push({ element, event, handler });
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error adding event listener:", error);
-    }
+    // Silently handle event listener errors
   }
 }
 
@@ -285,9 +290,6 @@ function debounce(func, wait) {
 function showMessage(message, type = "success", duration = 4000) {
   const toastContainer = document.getElementById("toast-container");
   if (!toastContainer) {
-    if (IS_DEVELOPMENT) {
-      console.log(`[${type.toUpperCase()}] ${message}`);
-    }
     return;
   }
 
@@ -397,9 +399,6 @@ function showConfirmModal(
 ) {
   return new Promise((resolve) => {
     if (!elements.confirmModal || !elements.confirmModalMessage) {
-      if (IS_DEVELOPMENT) {
-        console.error("Confirm modal elements not found");
-      }
       resolve(false);
       return;
     }
@@ -503,6 +502,79 @@ function hideConfirmModal() {
   }
 }
 
+/**
+ * Show category modal for adding or editing
+ * @param {string} mode - 'add' or 'edit'
+ * @param {string} currentName - Current category name (for edit mode)
+ * @returns {Promise<string|null>} Promise that resolves to the category name or null if cancelled
+ */
+function showCategoryModal(mode = 'add', currentName = '') {
+  return new Promise((resolve) => {
+    if (!elements.categoryModal || !elements.categoryModalInput) {
+      resolve(null);
+      return;
+    }
+
+    // Set modal title and input value
+    if (elements.categoryModalTitle) {
+      elements.categoryModalTitle.textContent = mode === 'edit' ? 'Edit Category' : 'Add Category';
+    }
+    if (elements.categoryModalInput) {
+      elements.categoryModalInput.value = currentName;
+      elements.categoryModalInput.focus();
+      elements.categoryModalInput.select();
+    }
+
+    // Hide error message
+    if (elements.categoryModalError) {
+      elements.categoryModalError.style.display = 'none';
+      elements.categoryModalError.textContent = '';
+    }
+
+    // Show modal
+    if (elements.categoryModal) {
+      elements.categoryModal.classList.add("show");
+      document.body.style.overflow = "hidden";
+    }
+
+    // Store resolve function for later use
+    elements.categoryModal._resolve = resolve;
+  });
+}
+
+/**
+ * Hide category modal
+ */
+function hideCategoryModal() {
+  if (elements.categoryModal) {
+    elements.categoryModal.classList.remove("show");
+    document.body.style.overflow = "";
+    if (elements.categoryModalInput) {
+      elements.categoryModalInput.value = '';
+    }
+    if (elements.categoryModalError) {
+      elements.categoryModalError.style.display = 'none';
+      elements.categoryModalError.textContent = '';
+    }
+    // Resolve with null if modal was closed without saving
+    if (elements.categoryModal._resolve) {
+      elements.categoryModal._resolve(null);
+      delete elements.categoryModal._resolve;
+    }
+  }
+}
+
+/**
+ * Show error in category modal
+ * @param {string} message - Error message
+ */
+function showCategoryModalError(message) {
+  if (elements.categoryModalError) {
+    elements.categoryModalError.textContent = message;
+    elements.categoryModalError.style.display = 'block';
+  }
+}
+
 // ============================================================================
 // VIEW MANAGEMENT
 // ============================================================================
@@ -523,6 +595,7 @@ function showDashboard() {
 function showMenuSection() {
   if (elements.menuSection) elements.menuSection.style.display = "block";
   if (elements.statsSection) elements.statsSection.style.display = "none";
+  if (elements.categoriesSection) elements.categoriesSection.style.display = "none";
   if (elements.pageTitle) elements.pageTitle.textContent = "Menu Items";
   updateActiveNav("menu");
 
@@ -540,6 +613,7 @@ function showMenuSection() {
 
 function showStatsSection() {
   if (elements.menuSection) elements.menuSection.style.display = "none";
+  if (elements.categoriesSection) elements.categoriesSection.style.display = "none";
   if (elements.statsSection) {
     elements.statsSection.style.display = "block";
     renderStatistics();
@@ -548,10 +622,127 @@ function showStatsSection() {
   updateActiveNav("stats");
 }
 
-function showItemModal() {
+async function showCategoriesSection() {
+  if (elements.menuSection) elements.menuSection.style.display = "none";
+  if (elements.statsSection) elements.statsSection.style.display = "none";
+  if (elements.categoriesSection) {
+    elements.categoriesSection.style.display = "block";
+    // Ensure settings are loaded before rendering
+    if (!state.uiSettings) {
+      await loadSettings();
+    }
+    renderCategories();
+  }
+  if (elements.pageTitle) elements.pageTitle.textContent = "Categories";
+  updateActiveNav("categories");
+}
+
+async function showItemModal() {
   if (elements.itemModal) {
+    // Ensure settings are loaded before populating dropdown (Categories tab is source of truth)
+    if (!state.uiSettings) {
+      await loadSettings();
+    }
+    populateCategoryDropdown(); // Ensure categories are up to date from Categories tab
+    // Set default category to "starters" when opening modal for new items (not editing)
+    if (!state.editingItemId && elements.itemCategory) {
+      // Find "Starters" (capitalized) option - case-insensitive search
+      const startersOption = Array.from(elements.itemCategory.options).find(
+        opt => opt.value.toLowerCase() === "starters"
+      );
+      if (startersOption) {
+        elements.itemCategory.value = startersOption.value;
+      } else if (elements.itemCategory.options.length > 0) {
+        elements.itemCategory.value = elements.itemCategory.options[0].value;
+      }
+    }
+    // Store initial form state for change detection
+    storeInitialFormState();
     elements.itemModal.classList.add("show");
     document.body.style.overflow = "hidden";
+  }
+}
+
+/**
+ * Store initial form state for change detection
+ */
+function storeInitialFormState() {
+  state.initialFormState = {
+    name: elements.itemName ? elements.itemName.value.trim() : "",
+    category: elements.itemCategory ? elements.itemCategory.value : "",
+    price: elements.itemPrice ? elements.itemPrice.value.trim() : "",
+    description: elements.itemDescription ? elements.itemDescription.value.trim() : "",
+    tags: elements.itemTags ? elements.itemTags.value.trim() : "",
+    image: state.currentImageBase64 || null,
+    editingItemId: state.editingItemId || null
+  };
+}
+
+/**
+ * Check if form has unsaved changes
+ * @returns {boolean} True if form has changes, false otherwise
+ */
+function hasFormChanges() {
+  if (!state.initialFormState) {
+    return false; // No initial state stored, assume no changes
+  }
+
+  const current = {
+    name: elements.itemName ? elements.itemName.value.trim() : "",
+    category: elements.itemCategory ? elements.itemCategory.value : "",
+    price: elements.itemPrice ? elements.itemPrice.value.trim() : "",
+    description: elements.itemDescription ? elements.itemDescription.value.trim() : "",
+    tags: elements.itemTags ? elements.itemTags.value.trim() : "",
+    image: state.currentImageBase64 || null,
+    editingItemId: state.editingItemId || null
+  };
+
+  const initial = state.initialFormState;
+
+  // Check if any field has changed
+  return (
+    current.name !== initial.name ||
+    current.category !== initial.category ||
+    current.price !== initial.price ||
+    current.description !== initial.description ||
+    current.tags !== initial.tags ||
+    current.image !== initial.image ||
+    current.editingItemId !== initial.editingItemId
+  );
+}
+
+/**
+ * Attempt to close item modal with confirmation if there are unsaved changes
+ * @returns {Promise<boolean>} True if modal should be closed, false if cancelled
+ */
+async function attemptCloseItemModal() {
+  // Check if form has unsaved changes
+  if (hasFormChanges()) {
+    const confirmed = await showConfirmModal(
+      "You have unsaved changes. Are you sure you want to close?",
+      "Unsaved Changes",
+      "Discard Changes",
+      "Cancel",
+      "warning"
+    );
+    
+    if (!confirmed) {
+      return false; // User cancelled
+    }
+  }
+  
+  // No changes or user confirmed discard
+  return true;
+}
+
+/**
+ * Close item modal (with confirmation if needed)
+ */
+async function closeItemModalWithConfirmation() {
+  const shouldClose = await attemptCloseItemModal();
+  if (shouldClose) {
+    resetForm();
+    hideItemModal();
   }
 }
 
@@ -559,6 +750,8 @@ function hideItemModal() {
   if (elements.itemModal) {
     elements.itemModal.classList.remove("show");
     document.body.style.overflow = "";
+    // Clear initial form state
+    state.initialFormState = null;
   }
 }
 
@@ -600,16 +793,16 @@ async function checkAuth() {
     if (data.isAuthenticated) {
       state.isAuthenticated = true;
       showDashboard();
+      // Load settings first to get filterCategories (persisted categories)
+      await loadSettings();
       await loadMenuItems();
+      populateCategoryDropdown(); // Populate after both settings and menu items are loaded
       initializeSortButtons();
       resetFilter();
     } else {
       showLogin();
     }
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Auth check failed:", error);
-    }
     showLogin();
   }
 }
@@ -705,9 +898,6 @@ function initAuth() {
         );
       }
     } catch (error) {
-      if (IS_DEVELOPMENT) {
-        console.error("Login error:", error);
-      }
       const errorMessage =
         error.message && error.message.includes("401")
           ? "Incorrect password. Please try again."
@@ -741,9 +931,6 @@ function initAuth() {
           resetFilter();
         }, 500);
       } catch (error) {
-        if (IS_DEVELOPMENT) {
-          console.error("Logout error:", error);
-        }
         showMessage("Logout completed", "info", 2000);
         setTimeout(() => {
           showLogin();
@@ -784,12 +971,12 @@ async function loadMenuItems() {
     }
 
     state.menuItems = await response.json();
+    // Clear newCategories since categories from saved items will be in getAvailableCategories()
+    state.newCategories.clear();
     renderMenuItems();
+    populateCategoryDropdown(); // Update category dropdown with new items
     initializeSortButtons();
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error loading menu items:", error);
-    }
     showMessage("Error loading menu items", "error");
   }
 }
@@ -1261,6 +1448,12 @@ function initItemForm() {
   // Initialize image preview
   initImagePreview();
 
+  // Initialize category management
+  initCategoryManagement();
+  
+  // Populate category dropdown
+  populateCategoryDropdown();
+
   addEventListener(elements.itemForm, "submit", async (e) => {
     e.preventDefault();
 
@@ -1290,9 +1483,11 @@ function initItemForm() {
       imageBase64 = state.currentImageBase64;
     }
 
+    const categoryValue = elements.itemCategory?.value?.trim() || "";
+    
     const itemData = {
       name: elements.itemName?.value?.trim() || "",
-      category: elements.itemCategory?.value?.trim() || "",
+      category: categoryValue || "starters", // Default to "starters" if empty
       price: parseFloat(elements.itemPrice?.value) || 0,
       description: elements.itemDescription?.value?.trim() || "",
       tags: tags,
@@ -1303,7 +1498,7 @@ function initItemForm() {
       showMessage("Item name is required", "error");
       return;
     }
-    if (!itemData.category) {
+    if (!itemData.category || itemData.category.trim().length === 0) {
       showMessage("Category is required", "error");
       return;
     }
@@ -1333,16 +1528,18 @@ function initItemForm() {
 
       if (data.success) {
         showMessage(data.message || "Item saved successfully", "success");
+        // Clear newCategories since the category is now saved in an item
+        state.newCategories.clear();
+        // Clear initial form state so no confirmation is shown
+        state.initialFormState = null;
         await loadMenuItems();
+        populateCategoryDropdown(); // Update category dropdown
         resetForm();
         hideItemModal();
       } else {
         showMessage(data.message || "Failed to save item", "error");
       }
     } catch (error) {
-      if (IS_DEVELOPMENT) {
-        console.error("Error saving item:", error);
-      }
       showMessage("Failed to save item. Please try again.", "error");
     }
   });
@@ -1367,7 +1564,19 @@ window.editItem = function (id) {
 
   if (elements.itemId) elements.itemId.value = item.id || "";
   if (elements.itemName) elements.itemName.value = item.name || "";
-  if (elements.itemCategory) elements.itemCategory.value = item.category || "";
+  if (elements.itemCategory && item.category) {
+    // Find matching option case-insensitively
+    const categoryLower = item.category.toLowerCase();
+    const matchingOption = Array.from(elements.itemCategory.options).find(
+      opt => opt.value.toLowerCase() === categoryLower
+    );
+    if (matchingOption) {
+      elements.itemCategory.value = matchingOption.value;
+    } else {
+      // If no match found, set directly (will be added if needed)
+      elements.itemCategory.value = item.category;
+    }
+  }
   if (elements.itemPrice) elements.itemPrice.value = item.price || 0;
   if (elements.itemDescription)
     elements.itemDescription.value = item.description || "";
@@ -1443,6 +1652,7 @@ window.deleteItem = async function (id) {
       showMessage(data.message || "Item deleted successfully", "success");
       state.selectedItems.delete(itemId);
       await loadMenuItems();
+      populateCategoryDropdown(); // Update category dropdown
       updateBulkActionsBar();
 
       if (state.editingItemId === itemId) {
@@ -1452,9 +1662,6 @@ window.deleteItem = async function (id) {
       showMessage(data.message || "Failed to delete item", "error");
     }
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error deleting item:", error);
-    }
     showMessage("Failed to delete item. Please try again.", "error");
   }
 };
@@ -1506,9 +1713,6 @@ window.duplicateItem = async function (id) {
       showMessage(data.message || "Failed to duplicate item", "error");
     }
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error duplicating item:", error);
-    }
     showMessage("Failed to duplicate item. Please try again.", "error");
   }
 };
@@ -1616,9 +1820,6 @@ async function bulkDeleteItems() {
       );
     }
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error in bulk delete:", error);
-    }
     showMessage("Failed to delete items. Please try again.", "error");
   }
 }
@@ -1912,9 +2113,6 @@ async function exportMenuData() {
 
     showMessage("Menu data exported successfully", "success");
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error exporting data:", error);
-    }
     showMessage("Failed to export menu data", "error");
   }
 }
@@ -1995,14 +2193,12 @@ async function importMenuData() {
       );
       hideImportModal();
       await loadMenuItems();
+      populateCategoryDropdown(); // Update category dropdown
       renderStatistics();
     } else {
       showMessage(data.message || "Failed to import menu data", "error");
     }
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error importing data:", error);
-    }
     showMessage(
       error.message ||
         "Failed to import menu data. Please check the file format.",
@@ -2031,6 +2227,17 @@ function resetForm() {
   if (elements.formTitle) elements.formTitle.textContent = "Add New Item";
   if (elements.submitBtnText) elements.submitBtnText.textContent = "Add Item";
   if (elements.cancelBtn) elements.cancelBtn.style.display = "inline-block";
+  
+  // Set default category to "starters" when creating new items
+  if (elements.itemCategory) {
+    populateCategoryDropdown(); // Ensure categories are loaded
+    // Set to "starters" if available, otherwise first category
+    if (elements.itemCategory.querySelector('option[value="starters"]')) {
+      elements.itemCategory.value = "starters";
+    } else if (elements.itemCategory.options.length > 0) {
+      elements.itemCategory.value = elements.itemCategory.options[0].value;
+    }
+  }
 }
 
 // ============================================================================
@@ -2158,6 +2365,20 @@ function getDefaultSettings() {
 }
 
 /**
+ * Capitalize category name (Title Case - first letter of each word)
+ * @param {string} category - Category name
+ * @returns {string} Capitalized category name
+ */
+function capitalizeCategory(category) {
+  if (!category || typeof category !== "string") return category;
+  return category
+    .toLowerCase()
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
  * Get available categories from menu items (optimized - uses cached state)
  * @returns {Array<string>} Sorted array of unique categories
  */
@@ -2179,6 +2400,576 @@ function getAvailableCategories() {
 }
 
 /**
+ * Populate category dropdown with available categories
+ * Priority: filterCategories (from Categories tab) > menu items > default categories
+ */
+function populateCategoryDropdown() {
+  if (!elements.itemCategory) return;
+
+  // Map structure: key = lowercase category, value = { display: string, value: string }
+  const allCategoriesMap = new Map();
+  
+  // PRIORITY 1: Get categories from filterCategories in settings (Categories tab - source of truth)
+  // This is the primary source since categories are managed in the Categories tab
+  if (state.uiSettings && state.uiSettings.filterCategories && Array.isArray(state.uiSettings.filterCategories)) {
+    state.uiSettings.filterCategories.forEach((f) => {
+      if (f && f.category && f.label) {
+        const categoryLower = String(f.category).toLowerCase().trim();
+        const displayLabel = String(f.label).trim();
+        const capitalized = capitalizeCategory(displayLabel);
+        
+        // Use the label (capitalized) as both display and value for consistency
+        // This ensures menu items save with the same case as defined in Categories tab
+        if (categoryLower) {
+          allCategoriesMap.set(categoryLower, {
+            display: capitalized,
+            value: capitalized // Use capitalized label as value
+          });
+        }
+      }
+    });
+    
+  }
+  
+  // PRIORITY 2: Add categories from existing menu items (only if not already in filterCategories)
+  // This catches any categories that exist in menu items but haven't been added to Categories tab yet
+  const categories = getAvailableCategories();
+  categories.forEach(cat => {
+    if (!cat || typeof cat !== 'string') return;
+    
+    const catLower = cat.toLowerCase().trim();
+    const capitalized = capitalizeCategory(cat);
+    
+    // Only add if not already in map (from filterCategories)
+    if (!allCategoriesMap.has(catLower)) {
+      allCategoriesMap.set(catLower, {
+        display: capitalized,
+        value: capitalized // Use capitalized version
+      });
+    }
+  });
+  
+  // PRIORITY 3: Add default categories (only if not already present)
+  // These are fallback categories that should always be available
+  const defaultCategories = [
+    "starters",
+    "lorem ipsum",
+    "chicken burgers",
+    "fries",
+    "dessert",
+    "drinks",
+    "add ons",
+    "dips",
+  ];
+  
+  defaultCategories.forEach(cat => {
+    const catLower = cat.toLowerCase();
+    const capitalized = capitalizeCategory(cat);
+    
+    // Only add if not already in map
+    if (!allCategoriesMap.has(catLower)) {
+      allCategoriesMap.set(catLower, {
+        display: capitalized,
+        value: capitalized
+      });
+    }
+  });
+  
+
+  // Convert to array of category objects, sorted by display name
+  const allCategories = Array.from(allCategoriesMap.values())
+    .sort((a, b) => a.display.localeCompare(b.display, undefined, { sensitivity: 'base' }));
+
+  // Clear existing options
+  elements.itemCategory.innerHTML = '';
+
+  // Add sorted categories
+  allCategories.forEach(({ display, value }) => {
+    const option = document.createElement("option");
+    option.value = value; // Use the actual value (from menu items or filterCategories)
+    option.textContent = display; // Use the display label
+    elements.itemCategory.appendChild(option);
+  });
+  
+  // Set default to "starters" if it exists, otherwise set to first category
+  const startersOption = allCategories.find(c => c.value.toLowerCase() === "starters");
+  if (startersOption) {
+    elements.itemCategory.value = startersOption.value;
+  } else if (allCategories.length > 0) {
+    elements.itemCategory.value = allCategories[0].value;
+  }
+}
+
+
+/**
+ * Save new category
+ */
+async function saveNewCategory() {
+  const input = document.getElementById("new-category-input");
+  if (!input || !elements.itemCategory) return;
+
+  const newCategory = input.value.trim();
+  if (!newCategory) {
+    showMessage("Please enter a category name", "error");
+    return;
+  }
+
+  // Check if category already exists (case-insensitive)
+  const existingCategories = Array.from(elements.itemCategory.options)
+    .map((opt) => opt.value.toLowerCase());
+  
+  if (existingCategories.includes(newCategory.toLowerCase())) {
+    showMessage("This category already exists", "error");
+    input.focus();
+    return;
+  }
+
+  // Capitalize the category for consistency
+  const capitalizedCategory = capitalizeCategory(newCategory);
+  
+  // Add to filter categories in settings FIRST (this saves to JSON)
+  const saveSuccess = await addCategoryToFilters(capitalizedCategory);
+  
+  if (!saveSuccess) {
+    showMessage("Failed to save category. Please try again.", "error");
+    return;
+  }
+  
+  // Add to state temporarily (will be cleared when item is saved or page reloads)
+  state.newCategories.add(capitalizedCategory);
+  
+  // Repopulate dropdown to include the new category (now loaded from settings)
+  populateCategoryDropdown();
+  
+  // Select the new category (use capitalized version)
+  const categoryLower = capitalizedCategory.toLowerCase();
+  const matchingOption = Array.from(elements.itemCategory.options).find(
+    opt => opt.value.toLowerCase() === categoryLower
+  );
+  if (matchingOption) {
+    elements.itemCategory.value = matchingOption.value;
+  }
+  
+  showMessage(`Category "${capitalizedCategory}" added successfully and saved to menu filters`, "success");
+}
+
+/**
+ * Add new category to filter categories in settings
+ * @param {string} category - Category name to add
+ */
+async function addCategoryToFilters(category) {
+  try {
+    // Load current settings if not loaded
+    if (!state.uiSettings) {
+      await loadSettings();
+    }
+
+    // Ensure filterCategories array exists
+    if (!state.uiSettings.filterCategories) {
+      state.uiSettings.filterCategories = [];
+    }
+
+    // Check if category already exists in filters (case-insensitive)
+    const categoryLower = category.toLowerCase();
+    const exists = state.uiSettings.filterCategories.some(
+      (f) => f.category && f.category.toLowerCase() === categoryLower
+    );
+
+    if (!exists) {
+      // Capitalize the label properly
+      const capitalizedLabel = capitalizeCategory(category);
+      // Use lowercase for category (server normalizes it anyway)
+      // Use capitalized label for display
+      const newFilter = {
+        category: categoryLower, // Use lowercase to match server normalization
+        label: capitalizedLabel,  // Use capitalized for display
+        enabled: true,
+      };
+
+      state.uiSettings.filterCategories.push(newFilter);
+
+      // Save settings to server
+      const response = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state.uiSettings),
+      });
+
+      if (response.ok) {
+        const responseData = await response.json();
+        // Update state with the saved settings (server may have normalized values)
+        if (responseData.settings) {
+          state.uiSettings = responseData.settings;
+        }
+        // Update the filter categories display if settings panel is open
+        if (elements.filtersList && elements.settingsPanel?.classList.contains("show")) {
+          renderFilterCategories(state.uiSettings.filterCategories);
+        }
+        return true; // Success
+      } else {
+        return false; // Failed
+      }
+    }
+    return true; // Already exists, consider it success
+  } catch (error) {
+    return false; // Error occurred
+  }
+}
+
+/**
+ * Render categories list
+ */
+function renderCategories() {
+  if (!elements.categoriesList) {
+    return;
+  }
+
+  const categories = state.uiSettings?.filterCategories || [];
+  
+  // Update count
+  if (elements.categoryCount) {
+    elements.categoryCount.textContent = categories.length;
+  }
+
+  // Clear existing list
+  elements.categoriesList.innerHTML = '';
+
+  if (categories.length === 0) {
+    elements.categoriesList.innerHTML = `
+      <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+        <p>No categories found. Click "Add Category" to create one.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Create category cards
+  const fragment = document.createDocumentFragment();
+  
+  categories.forEach((filter, index) => {
+    const categoryCard = document.createElement("div");
+    categoryCard.className = "category-card";
+    
+    // Get usage count (how many menu items use this category)
+    const categoryLower = filter.category.toLowerCase();
+    const usageCount = state.menuItems.filter(
+      item => item.category && item.category.toLowerCase() === categoryLower
+    ).length;
+
+    categoryCard.innerHTML = `
+      <div class="category-card-header">
+        <div class="category-card-info">
+          <h3 class="category-name">${escapeHtml(filter.label)}</h3>
+          <span class="category-value">${escapeHtml(filter.category)}</span>
+        </div>
+        <div class="category-card-actions">
+          <button class="btn-icon btn-secondary btn-edit-category" data-index="${index}" title="Edit Category">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M11.5 2.5a1.5 1.5 0 010 2.12l-7 7L2 13l1.38-2.5 7-7a1.5 1.5 0 012.12 0z" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Edit
+          </button>
+          <button class="btn-icon btn-secondary btn-delete-category" data-index="${index}" title="Delete Category" ${usageCount > 0 ? 'disabled' : ''}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1m2 0v9a1 1 0 01-1 1H4a1 1 0 01-1-1V4h10zM6 7v4M10 7v4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Delete
+          </button>
+        </div>
+      </div>
+      <div class="category-card-body">
+        <div class="category-meta">
+          <span class="category-usage">Used in ${usageCount} item${usageCount !== 1 ? 's' : ''}</span>
+          <span class="category-status ${filter.enabled ? 'enabled' : 'disabled'}">
+            ${filter.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+      </div>
+    `;
+
+    fragment.appendChild(categoryCard);
+  });
+
+  elements.categoriesList.appendChild(fragment);
+
+  // Attach event listeners
+  attachCategoryEventListeners();
+}
+
+/**
+ * Attach event listeners to category cards
+ */
+function attachCategoryEventListeners() {
+  // Edit buttons
+  const editButtons = elements.categoriesList.querySelectorAll('.btn-edit-category');
+  editButtons.forEach(btn => {
+    addEventListener(btn, 'click', (e) => {
+      const index = parseInt(btn.dataset.index);
+      editCategory(index);
+    });
+  });
+
+  // Delete buttons
+  const deleteButtons = elements.categoriesList.querySelectorAll('.btn-delete-category');
+  deleteButtons.forEach(btn => {
+    addEventListener(btn, 'click', (e) => {
+      const index = parseInt(btn.dataset.index);
+      deleteCategory(index);
+    });
+  });
+}
+
+/**
+ * Show add category modal
+ */
+async function showAddCategoryModal() {
+  const categoryName = await showCategoryModal('add');
+  if (!categoryName) {
+    return; // User cancelled
+  }
+
+  const trimmedName = categoryName.trim();
+  if (!trimmedName) {
+    return;
+  }
+
+  const capitalized = capitalizeCategory(trimmedName);
+
+  // Check if category already exists
+  const categories = state.uiSettings?.filterCategories || [];
+  const exists = categories.some(
+    f => f.category.toLowerCase() === trimmedName.toLowerCase() ||
+         f.label.toLowerCase() === trimmedName.toLowerCase()
+  );
+
+  if (exists) {
+    showMessage("This category already exists", "error");
+    return;
+  }
+
+  // Add category
+  const success = await addCategoryToFilters(capitalized);
+  if (success) {
+    renderCategories();
+    populateCategoryDropdown();
+    showMessage(`Category "${capitalized}" added successfully`, "success");
+  }
+}
+
+/**
+ * Edit category
+ * @param {number} index - Category index
+ */
+async function editCategory(index) {
+  const categories = state.uiSettings?.filterCategories || [];
+  if (index < 0 || index >= categories.length) return;
+
+  const category = categories[index];
+  const newName = await showCategoryModal('edit', category.label);
+  
+  if (!newName || !newName.trim()) {
+    return; // User cancelled
+  }
+
+  const trimmedName = newName.trim();
+  const capitalized = capitalizeCategory(trimmedName);
+  const categoryLower = trimmedName.toLowerCase();
+
+  // Check if new name conflicts with existing category
+  const allCategories = state.uiSettings?.filterCategories || [];
+  const conflict = allCategories.some(
+    (f, i) => i !== index && 
+    (f.category.toLowerCase() === categoryLower || f.label.toLowerCase() === categoryLower)
+  );
+
+  if (conflict) {
+    showMessage("A category with this name already exists", "error");
+    return;
+  }
+
+  // Store old category value before updating
+  const oldCategoryLower = category.category.toLowerCase();
+
+  // Update category
+  category.category = categoryLower;
+  category.label = capitalized;
+
+  // Also update menu items that use this category (update their category field)
+  const itemsToUpdate = state.menuItems.filter(
+    item => item.category && item.category.toLowerCase() === oldCategoryLower
+  );
+
+  if (itemsToUpdate.length > 0) {
+    // Update menu items on server
+    const updatePromises = itemsToUpdate.map(item => {
+      item.category = capitalized; // Update to new capitalized name
+      return fetch(`/api/menu/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+    });
+    await Promise.all(updatePromises);
+  }
+
+  // Save settings to server
+  const response = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state.uiSettings),
+  });
+
+  if (response.ok) {
+    const responseData = await response.json();
+    if (responseData.settings) {
+      state.uiSettings = responseData.settings;
+    }
+    await loadMenuItems(); // Reload to get updated items
+    renderCategories();
+    populateCategoryDropdown();
+    showMessage(`Category updated to "${capitalized}"`, "success");
+  } else {
+    showMessage("Failed to update category", "error");
+  }
+}
+
+/**
+ * Delete category
+ * @param {number} index - Category index
+ */
+async function deleteCategory(index) {
+  const categories = state.uiSettings?.filterCategories || [];
+  if (index < 0 || index >= categories.length) return;
+
+  const category = categories[index];
+  const categoryLower = category.category.toLowerCase();
+
+  // Check if category is used in menu items
+  const usageCount = state.menuItems.filter(
+    item => item.category && item.category.toLowerCase() === categoryLower
+  ).length;
+
+  if (usageCount > 0) {
+    showMessage(
+      `Cannot delete category "${category.label}" - it is used in ${usageCount} menu item${usageCount !== 1 ? 's' : ''}. Please remove it from all items first.`,
+      "error"
+    );
+    return;
+  }
+
+  const confirmed = await showConfirmModal(
+    `Are you sure you want to delete the category "${category.label}"? This action cannot be undone.`,
+    "Delete Category",
+    "Delete",
+    "Cancel",
+    "delete"
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  // Remove category
+  categories.splice(index, 1);
+  state.uiSettings.filterCategories = categories;
+
+  // Save to server
+  const response = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state.uiSettings),
+  });
+
+  if (response.ok) {
+    const responseData = await response.json();
+    if (responseData.settings) {
+      state.uiSettings = responseData.settings;
+    }
+    renderCategories();
+    populateCategoryDropdown();
+    showMessage(`Category "${category.label}" deleted successfully`, "success");
+  } else {
+    showMessage("Failed to delete category", "error");
+  }
+}
+
+/**
+ * Initialize category management
+ */
+function initCategoryManagement() {
+  // Initialize category management for the categories section
+  const addCategoryBtn = document.getElementById("add-category-btn");
+  if (addCategoryBtn) {
+    addEventListener(addCategoryBtn, "click", () => {
+      showAddCategoryModal();
+    });
+  }
+
+  // Initialize category modal event listeners
+  if (elements.categoryModalSave) {
+    addEventListener(elements.categoryModalSave, "click", () => {
+      handleCategoryModalSave();
+    });
+  }
+
+  if (elements.categoryModalCancel || elements.closeCategoryModal) {
+    const cancelHandler = () => {
+      hideCategoryModal();
+    };
+    if (elements.categoryModalCancel) {
+      addEventListener(elements.categoryModalCancel, "click", cancelHandler);
+    }
+    if (elements.closeCategoryModal) {
+      addEventListener(elements.closeCategoryModal, "click", cancelHandler);
+    }
+  }
+
+  // Close modal when clicking outside
+  if (elements.categoryModal) {
+    addEventListener(elements.categoryModal, "click", (e) => {
+      if (e.target === elements.categoryModal) {
+        hideCategoryModal();
+      }
+    });
+  }
+
+  // Handle Enter key in input
+  if (elements.categoryModalInput) {
+    addEventListener(elements.categoryModalInput, "keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleCategoryModalSave();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        hideCategoryModal();
+      }
+    });
+  }
+}
+
+/**
+ * Handle category modal save
+ */
+function handleCategoryModalSave() {
+  if (!elements.categoryModalInput || !elements.categoryModal._resolve) {
+    return;
+  }
+
+  const categoryName = elements.categoryModalInput.value.trim();
+  
+  if (!categoryName) {
+    showCategoryModalError("Please enter a category name");
+    return;
+  }
+
+  // Resolve with the category name
+  const resolve = elements.categoryModal._resolve;
+  delete elements.categoryModal._resolve;
+  hideCategoryModal();
+  resolve(categoryName);
+}
+
+/**
  * Load settings from server
  * @returns {Promise<Object>}
  */
@@ -2191,16 +2982,18 @@ async function loadSettings() {
 
     state.uiSettings = await response.json();
 
+    // Ensure filterCategories is an array
+    if (!Array.isArray(state.uiSettings.filterCategories)) {
+      state.uiSettings.filterCategories = [];
+    }
+
     // If no filter categories exist, try to auto-detect from menu items
-    if (
-      !state.uiSettings.filterCategories ||
-      state.uiSettings.filterCategories.length === 0
-    ) {
+    if (state.uiSettings.filterCategories.length === 0) {
       const availableCategories = getAvailableCategories();
       if (availableCategories.length > 0) {
         state.uiSettings.filterCategories = availableCategories.map((cat) => ({
-          category: cat,
-          label: cat.charAt(0).toUpperCase() + cat.slice(1),
+          category: cat.toLowerCase(), // Normalize to lowercase
+          label: capitalizeCategory(cat), // Capitalize for display
           enabled: true,
         }));
       } else {
@@ -2209,11 +3002,17 @@ async function loadSettings() {
       }
     }
 
+    // Ensure all filterCategories have required fields
+    state.uiSettings.filterCategories = state.uiSettings.filterCategories
+      .filter(f => f && f.category && f.label)
+      .map(f => ({
+        category: String(f.category).trim().toLowerCase(),
+        label: String(f.label).trim() || capitalizeCategory(f.category),
+        enabled: f.enabled !== false
+      }));
+
     populateSettingsForm(state.uiSettings);
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error loading settings:", error);
-    }
     state.uiSettings = getDefaultSettings();
     populateSettingsForm(state.uiSettings);
   }
@@ -2389,7 +3188,7 @@ function addFilter() {
       const cat = availableCategories[i];
       if (!existingCategoriesSet.has(cat.toLowerCase())) {
         newCategory = cat;
-        newLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+        newLabel = capitalizeCategory(cat);
         break;
       }
     }
@@ -2663,9 +3462,6 @@ function initSettingsPanel() {
           showMessage(data.message || "Failed to save settings", "error");
         }
       } catch (error) {
-        if (IS_DEVELOPMENT) {
-          console.error("Error saving settings:", error);
-        }
         showMessage("Failed to save settings. Please try again.", "error");
       }
     });
@@ -3062,9 +3858,6 @@ function printMenu() {
       }, 250);
     };
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Print error:", error);
-    }
     showMessage("Failed to open print dialog", "error");
   }
 }
@@ -3091,6 +3884,12 @@ function initNavigation() {
           hideSettingsPanel();
           showStatsSection();
         });
+      } else if (item.dataset.section === "categories") {
+        addEventListener(item, "click", async (e) => {
+          e.preventDefault();
+          hideSettingsPanel();
+          await showCategoriesSection();
+        });
       } else if (item.dataset.section === "settings") {
         addEventListener(item, "click", (e) => {
           e.preventDefault();
@@ -3108,36 +3907,33 @@ function initNavigation() {
   }
 
   if (elements.closeItemModal) {
-    addEventListener(elements.closeItemModal, "click", () => {
-      resetForm();
-      hideItemModal();
+    addEventListener(elements.closeItemModal, "click", async () => {
+      await closeItemModalWithConfirmation();
     });
   }
 
   if (elements.itemModal) {
-    addEventListener(elements.itemModal, "click", (e) => {
+    addEventListener(elements.itemModal, "click", async (e) => {
       if (e.target === elements.itemModal) {
-        resetForm();
-        hideItemModal();
+        await closeItemModalWithConfirmation();
       }
     });
   }
 
-  addEventListener(document, "keydown", (e) => {
+  addEventListener(document, "keydown", async (e) => {
     if (
       e.key === "Escape" &&
       elements.itemModal &&
       elements.itemModal.classList.contains("show")
     ) {
-      resetForm();
-      hideItemModal();
+      e.preventDefault();
+      await closeItemModalWithConfirmation();
     }
   });
 
   if (elements.cancelBtn) {
-    addEventListener(elements.cancelBtn, "click", () => {
-      resetForm();
-      hideItemModal();
+    addEventListener(elements.cancelBtn, "click", async () => {
+      await closeItemModalWithConfirmation();
     });
   }
 
@@ -3257,9 +4053,6 @@ function initialize() {
     initLayoutToggle();
     checkAuth();
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.error("Error during initialization:", error);
-    }
     showMessage("Failed to initialize. Please refresh the page.", "error");
   }
 }
@@ -3285,15 +4078,10 @@ if (
         cleanupEventListeners();
       } catch (error) {
         // Silently fail on cleanup
-        if (IS_DEVELOPMENT) {
-          console.warn("Error during cleanup:", error);
-        }
       }
     };
     window.addEventListener("beforeunload", beforeUnloadHandler);
   } catch (error) {
-    if (IS_DEVELOPMENT) {
-      console.warn("Could not add beforeunload listener:", error);
-    }
+    // Silently handle beforeunload listener errors
   }
 }

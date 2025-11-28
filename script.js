@@ -186,7 +186,6 @@ async function loadAndApplySettings() {
     renderFilters();
     return settings;
   } catch (error) {
-    console.error("Error loading settings:", error);
     state.settings = DEFAULT_SETTINGS;
     applySettings(DEFAULT_SETTINGS);
     state.filterCategories = DEFAULT_FILTER_CATEGORIES;
@@ -665,7 +664,6 @@ async function loadMenuData() {
     state.menuData = data;
     return data;
   } catch (error) {
-    console.error("Error loading menu data:", error);
     throw error;
   }
 }
@@ -719,7 +717,6 @@ async function initialize() {
     // Hide loading screen
     hideLoadingScreen();
   } catch (error) {
-    console.error("Error initializing:", error);
     showError(error.message || "Failed to load menu. Please refresh the page.");
     hideLoadingScreen();
   }

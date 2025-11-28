@@ -6,7 +6,7 @@
     <title>Admin Panel - Lorem Ipsum</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230d3b2e' stroke-width='2'%3E%3Cpath d='M3 3h18v18H3z'/%3E%3Cpath d='M3 9h18M9 3v18'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z' fill='%234A9EFF'/%3E%3Ccircle cx='12' cy='11' r='2.5' fill='white'/%3E%3Cpath d='M12 8.5v5M9.5 11h5' stroke='%234A9EFF' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="admin.css" />
   </head>
@@ -23,11 +23,28 @@
                 height="48"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <path d="M3 3h18v18H3z" />
-                <path d="M3 9h18M9 3v18" />
+                <!-- Shield background -->
+                <path
+                  d="M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z"
+                  fill="currentColor"
+                  fill-opacity="0.1"
+                />
+                <path
+                  d="M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+                <!-- Settings gear icon -->
+                <circle cx="12" cy="11" r="3" fill="currentColor" />
+                <path
+                  d="M12 8v6M9 11h6"
+                  stroke="white"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
               </svg>
             </div>
             <h1>Lorem Ipsum Admin</h1>
@@ -158,6 +175,27 @@
               <circle cx="11" cy="12" r="1" fill="currentColor" />
             </svg>
             <span class="nav-text">Statistics</span>
+          </a>
+          <a href="#" class="nav-item" data-section="categories">
+            <svg
+              class="nav-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M3 4h10M3 8h10M3 12h10"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+              <circle cx="5" cy="4" r="1" fill="currentColor" />
+              <circle cx="8" cy="8" r="1" fill="currentColor" />
+              <circle cx="11" cy="12" r="1" fill="currentColor" />
+            </svg>
+            <span class="nav-text">Categories</span>
           </a>
           <a href="#" class="nav-item" data-section="settings">
             <svg
@@ -545,6 +583,42 @@
             <!-- Statistics will be injected here by JS -->
           </div>
         </section>
+
+        <!-- Categories Section -->
+        <section
+          id="categories-section"
+          class="content-section"
+          style="display: none"
+        >
+          <div class="section-header">
+            <div class="section-title-bar">
+              <h2>Categories (<span id="category-count">0</span>)</h2>
+              <div class="section-actions">
+                <button class="btn-icon" id="add-category-btn" title="Add New Category">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M8 3v10M3 8h10"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                  Add Category
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="categories-list" id="categories-list">
+            <!-- Categories will be injected here by JS -->
+          </div>
+        </section>
       </main>
     </div>
 
@@ -589,14 +663,7 @@
             <div class="form-group">
               <label>Category</label>
               <select id="item-category" required>
-                <option value="starters">Starters</option>
-                <option value="lorem ipsum">Lorem Ipsum</option>
-                <option value="chicken burgers">Chicken Burgers</option>
-                <option value="fries">Fries</option>
-                <option value="dessert">Dessert</option>
-                <option value="drinks">Drinks</option>
-                <option value="add ons">Add Ons</option>
-                <option value="dips">Dips</option>
+                <option value="">Select a category...</option>
               </select>
             </div>
 
@@ -914,6 +981,53 @@
               Confirm
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Category Modal -->
+    <div id="category-modal" class="modal">
+      <div class="modal-content modal-content-small">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <h2 id="category-modal-title">Add Category</h2>
+          </div>
+          <button class="modal-close" id="close-category-modal">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M12 4l-8 8M4 4l8 8"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="category-modal-input">Category Name</label>
+            <input
+              type="text"
+              id="category-modal-input"
+              placeholder="Enter category name"
+              autocomplete="off"
+            />
+            <div id="category-modal-error" class="form-error" style="display: none;"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="category-modal-cancel">
+            Cancel
+          </button>
+          <button type="button" class="btn-primary" id="category-modal-save">
+            Save
+          </button>
         </div>
       </div>
     </div>
