@@ -59,7 +59,9 @@ const elements = {
   addItemBtn: null,
   refreshBtn: null,
   pageTitle: null,
-  submitBtnText: null
+  submitBtnText: null,
+  sidebar: null,
+  sidebarToggle: null
 };
 
 /**
@@ -107,6 +109,8 @@ function initializeElements() {
     elements.refreshBtn = document.getElementById("refresh-btn");
     elements.pageTitle = document.getElementById("page-title");
     elements.submitBtnText = document.getElementById("submit-btn-text");
+    elements.sidebar = document.getElementById("sidebar");
+    elements.sidebarToggle = document.getElementById("sidebar-toggle");
     
     if (!elements.loginForm) {
       console.error("Critical element 'login-form' not found!");
@@ -1212,6 +1216,36 @@ function initNavigation() {
     addEventListener(elements.refreshBtn, "click", async () => {
       await loadMenuItems();
     });
+  }
+
+  // Sidebar toggle functionality
+  if (elements.sidebarToggle && elements.sidebar) {
+    const mainContent = document.querySelector(".main-content");
+    
+    const updateMainContentMargin = () => {
+      if (mainContent) {
+        if (elements.sidebar.classList.contains("collapsed")) {
+          mainContent.style.marginLeft = "70px";
+        } else {
+          mainContent.style.marginLeft = "";
+        }
+      }
+    };
+
+    addEventListener(elements.sidebarToggle, "click", () => {
+      elements.sidebar.classList.toggle("collapsed");
+      updateMainContentMargin();
+      // Save state to localStorage
+      const isCollapsed = elements.sidebar.classList.contains("collapsed");
+      localStorage.setItem("sidebarCollapsed", isCollapsed);
+    });
+
+    // Restore sidebar state from localStorage
+    const savedState = localStorage.getItem("sidebarCollapsed");
+    if (savedState === "true") {
+      elements.sidebar.classList.add("collapsed");
+      updateMainContentMargin();
+    }
   }
 }
 
