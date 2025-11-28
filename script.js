@@ -20,7 +20,7 @@ const DEFAULT_FILTER_CATEGORIES = [
   { category: "dessert", label: "Dessert" },
   { category: "drinks", label: "Drinks" },
   { category: "add ons", label: "Add Ons" },
-  { category: "dips", label: "Dips" }
+  { category: "dips", label: "Dips" },
 ];
 
 /**
@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS = {
   descriptionSize: 0.95,
   priceSize: 1.5,
   cardOpacity: 0.05,
-  gridGap: 2
+  gridGap: 2,
 };
 
 // ============================================================================
@@ -53,7 +53,7 @@ const state = {
   filterCategories: [],
   currentSort: "default",
   currentCategory: "all",
-  settings: null
+  settings: null,
 };
 
 // ============================================================================
@@ -67,7 +67,7 @@ const elements = {
   sortModal: null,
   openSortBtn: null,
   closeSortBtn: null,
-  scrollToTopBtn: null
+  scrollToTopBtn: null,
 };
 
 /**
@@ -123,10 +123,12 @@ function debounce(func, wait) {
  */
 function showError(message) {
   if (!elements.menuGrid) return;
-  
+
   elements.menuGrid.innerHTML = `
     <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: rgba(255, 255, 255, 0.8);">
-      <p style="font-size: 1.2rem; margin-bottom: 1rem;">⚠️ ${escapeHtml(message)}</p>
+      <p style="font-size: 1.2rem; margin-bottom: 1rem;">⚠️ ${escapeHtml(
+        message
+      )}</p>
       <button onclick="location.reload()" style="
         padding: 0.75rem 1.5rem;
         background: var(--accent-color, #ffd700);
@@ -154,31 +156,33 @@ async function loadAndApplySettings() {
     const response = await fetch("/api/settings", {
       cache: "default",
       headers: {
-        "Accept": "application/json"
-      }
+        Accept: "application/json",
+      },
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const settings = await response.json();
-    
+
     // Validate settings structure
     if (!settings || typeof settings !== "object") {
       throw new Error("Invalid settings format");
     }
-    
+
     state.settings = settings;
     applySettings(settings);
-    
+
     // Store filter categories
     if (settings.filterCategories && Array.isArray(settings.filterCategories)) {
-      state.filterCategories = settings.filterCategories.filter(f => f && f.enabled);
+      state.filterCategories = settings.filterCategories.filter(
+        (f) => f && f.enabled
+      );
     } else {
       state.filterCategories = DEFAULT_FILTER_CATEGORIES;
     }
-    
+
     renderFilters();
     return settings;
   } catch (error) {
@@ -198,44 +202,68 @@ async function loadAndApplySettings() {
  */
 function applySettings(settings, updateElements = false) {
   if (!settings || typeof settings !== "object") return;
-  
+
   const root = document.documentElement;
-  
+
   requestAnimationFrame(() => {
     // Apply CSS variables
-    root.style.setProperty("--primary-color", settings.primaryColor || DEFAULT_SETTINGS.primaryColor);
-    root.style.setProperty("--secondary-color", settings.secondaryColor || DEFAULT_SETTINGS.secondaryColor);
-    root.style.setProperty("--text-color", settings.textColor || DEFAULT_SETTINGS.textColor);
-    root.style.setProperty("--accent-color", settings.accentColor || DEFAULT_SETTINGS.accentColor);
-    
-    const cardBg = `rgba(255, 255, 255, ${settings.cardOpacity || DEFAULT_SETTINGS.cardOpacity})`;
+    root.style.setProperty(
+      "--primary-color",
+      settings.primaryColor || DEFAULT_SETTINGS.primaryColor
+    );
+    root.style.setProperty(
+      "--secondary-color",
+      settings.secondaryColor || DEFAULT_SETTINGS.secondaryColor
+    );
+    root.style.setProperty(
+      "--text-color",
+      settings.textColor || DEFAULT_SETTINGS.textColor
+    );
+    root.style.setProperty(
+      "--accent-color",
+      settings.accentColor || DEFAULT_SETTINGS.accentColor
+    );
+
+    const cardBg = `rgba(255, 255, 255, ${
+      settings.cardOpacity || DEFAULT_SETTINGS.cardOpacity
+    })`;
     root.style.setProperty("--card-bg", cardBg);
-    
+
     if (elements.menuGrid) {
-      elements.menuGrid.style.gap = `${settings.gridGap || DEFAULT_SETTINGS.gridGap}rem`;
+      elements.menuGrid.style.gap = `${
+        settings.gridGap || DEFAULT_SETTINGS.gridGap
+      }rem`;
     }
-    
+
     const heroH1 = document.querySelector(".hero h1");
     if (heroH1) {
-      heroH1.style.fontSize = `${settings.headingFontSize || DEFAULT_SETTINGS.headingFontSize}rem`;
+      heroH1.style.fontSize = `${
+        settings.headingFontSize || DEFAULT_SETTINGS.headingFontSize
+      }rem`;
     }
-    
+
     // Update existing menu item elements if requested
     if (updateElements) {
       const itemNames = document.querySelectorAll(".item-name");
       const itemDescs = document.querySelectorAll(".item-desc");
       const itemPrices = document.querySelectorAll(".item-price");
-      
+
       itemNames.forEach((el) => {
-        el.style.fontSize = `${settings.itemNameSize || DEFAULT_SETTINGS.itemNameSize}rem`;
+        el.style.fontSize = `${
+          settings.itemNameSize || DEFAULT_SETTINGS.itemNameSize
+        }rem`;
       });
-      
+
       itemDescs.forEach((el) => {
-        el.style.fontSize = `${settings.descriptionSize || DEFAULT_SETTINGS.descriptionSize}rem`;
+        el.style.fontSize = `${
+          settings.descriptionSize || DEFAULT_SETTINGS.descriptionSize
+        }rem`;
       });
-      
+
       itemPrices.forEach((el) => {
-        el.style.fontSize = `${settings.priceSize || DEFAULT_SETTINGS.priceSize}rem`;
+        el.style.fontSize = `${
+          settings.priceSize || DEFAULT_SETTINGS.priceSize
+        }rem`;
         el.style.color = settings.accentColor || DEFAULT_SETTINGS.accentColor;
       });
     }
@@ -259,26 +287,31 @@ function applyVisualSettingsOnly(settings) {
  */
 function renderFilters() {
   if (!elements.filtersContainer) return;
-  
+
   const activeCategory = state.currentCategory || "all";
-  
+
   // Build filter HTML efficiently
   const filterButtons = [
-    `<button class="filter-btn ${activeCategory === "all" ? "active" : ""}" data-category="all" aria-label="Show all items">All</button>`
+    `<button class="filter-btn ${
+      activeCategory === "all" ? "active" : ""
+    }" data-category="all" aria-label="Show all items">All</button>`,
   ];
-  
-  state.filterCategories.forEach(filter => {
+
+  state.filterCategories.forEach((filter) => {
     if (!filter || !filter.category || !filter.label) return;
-    
-    const isActive = activeCategory.toLowerCase() === filter.category.toLowerCase();
+
+    const isActive =
+      activeCategory.toLowerCase() === filter.category.toLowerCase();
     const categoryEscaped = escapeHtml(filter.category);
     const labelEscaped = escapeHtml(filter.label);
-    
+
     filterButtons.push(
-      `<button class="filter-btn ${isActive ? "active" : ""}" data-category="${categoryEscaped}" aria-label="Filter by ${labelEscaped}">${labelEscaped}</button>`
+      `<button class="filter-btn ${
+        isActive ? "active" : ""
+      }" data-category="${categoryEscaped}" aria-label="Filter by ${labelEscaped}">${labelEscaped}</button>`
     );
   });
-  
+
   elements.filtersContainer.innerHTML = filterButtons.join("");
   attachFilterListeners();
 }
@@ -289,26 +322,31 @@ function renderFilters() {
 function attachFilterListeners() {
   const filterBtns = elements.filtersContainer?.querySelectorAll(".filter-btn");
   if (!filterBtns || filterBtns.length === 0) return;
-  
+
   filterBtns.forEach((btn) => {
     const newBtn = btn.cloneNode(true);
     btn.parentNode.replaceChild(newBtn, btn);
-    
+
     newBtn.addEventListener("click", () => {
-      const allFilterBtns = elements.filtersContainer?.querySelectorAll(".filter-btn");
+      const allFilterBtns =
+        elements.filtersContainer?.querySelectorAll(".filter-btn");
       if (allFilterBtns) {
         allFilterBtns.forEach((b) => b.classList.remove("active"));
       }
-      
+
       newBtn.classList.add("active");
 
       state.currentCategory = newBtn.getAttribute("data-category") || "all";
-      
-      const filteredItems = state.currentCategory === "all" 
-        ? state.menuData 
-        : state.menuData.filter(
-            (item) => item.category && item.category.toLowerCase() === state.currentCategory.toLowerCase()
-          );
+
+      const filteredItems =
+        state.currentCategory === "all"
+          ? state.menuData
+          : state.menuData.filter(
+              (item) =>
+                item.category &&
+                item.category.toLowerCase() ===
+                  state.currentCategory.toLowerCase()
+            );
       renderMenu(filteredItems);
     });
   });
@@ -326,9 +364,9 @@ function attachFilterListeners() {
  */
 function sortMenuItems(items, sortType) {
   if (!Array.isArray(items)) return [];
-  
+
   const sorted = [...items]; // Create copy to avoid mutating original
-  
+
   switch (sortType) {
     case "name-asc":
       return sorted.sort((a, b) => {
@@ -368,8 +406,9 @@ function sortMenuItems(items, sortType) {
  * Initialize sort modal functionality
  */
 function initSortModal() {
-  if (!elements.sortModal || !elements.openSortBtn || !elements.closeSortBtn) return;
-  
+  if (!elements.sortModal || !elements.openSortBtn || !elements.closeSortBtn)
+    return;
+
   const sortOptionBtns = document.querySelectorAll(".sort-option-btn");
 
   // Open modal
@@ -404,17 +443,19 @@ function initSortModal() {
       sortOptionBtns.forEach((b) => b.classList.remove("active"));
       // Add active class to clicked button
       btn.classList.add("active");
-      
+
       state.currentSort = btn.getAttribute("data-sort") || "default";
-      
+
       // Get filtered items based on current category
       let itemsToSort = state.menuData;
       if (state.currentCategory !== "all") {
         itemsToSort = state.menuData.filter(
-          item => item.category && item.category.toLowerCase() === state.currentCategory.toLowerCase()
+          (item) =>
+            item.category &&
+            item.category.toLowerCase() === state.currentCategory.toLowerCase()
         );
       }
-      
+
       renderMenu(itemsToSort);
       updateSortButtonText();
       elements.sortModal.classList.remove("show");
@@ -441,15 +482,15 @@ function updateSortModalDisplay() {
  */
 function updateSortButtonText() {
   if (!elements.openSortBtn) return;
-  
+
   const sortLabels = {
-    "default": "Default",
+    default: "Default",
     "name-asc": "Name (A-Z)",
     "name-desc": "Name (Z-A)",
     "price-asc": "Price (Low-High)",
-    "price-desc": "Price (High-Low)"
+    "price-desc": "Price (High-Low)",
   };
-  
+
   const label = sortLabels[state.currentSort] || "Sort Options";
   const span = elements.openSortBtn.querySelector("span");
   if (span) {
@@ -467,10 +508,11 @@ function updateSortButtonText() {
  */
 function renderMenu(items) {
   if (!elements.menuGrid) return;
-  
+
   if (!Array.isArray(items) || items.length === 0) {
     const emptyMessage = document.createElement("div");
-    emptyMessage.style.cssText = "grid-column: 1 / -1; text-align: center; padding: 2rem; color: rgba(255, 255, 255, 0.6);";
+    emptyMessage.style.cssText =
+      "grid-column: 1 / -1; text-align: center; padding: 2rem; color: rgba(255, 255, 255, 0.6);";
     const p = document.createElement("p");
     p.textContent = "No items found.";
     emptyMessage.appendChild(p);
@@ -478,10 +520,10 @@ function renderMenu(items) {
     elements.menuGrid.appendChild(emptyMessage);
     return;
   }
-  
+
   const sortedItems = sortMenuItems(items, state.currentSort);
   const fragment = document.createDocumentFragment();
-  
+
   // Build DOM elements directly for better performance (avoids innerHTML parsing)
   for (let i = 0; i < sortedItems.length; i++) {
     const item = sortedItems[i];
@@ -489,14 +531,14 @@ function renderMenu(items) {
     const price = parseFloat(item.price) || 0;
     const description = escapeHtml(item.description || "");
     const category = escapeHtml(item.category || "");
-    
+
     const menuItem = document.createElement("div");
     menuItem.className = "menu-item";
     menuItem.dataset.id = item.id || "";
-    
+
     const content = document.createElement("div");
     content.className = "menu-item-content";
-    
+
     // Add image if available
     if (item.image) {
       const imageContainer = document.createElement("div");
@@ -509,44 +551,44 @@ function renderMenu(items) {
       imageContainer.appendChild(img);
       content.appendChild(imageContainer);
     }
-    
+
     const header = document.createElement("div");
     header.className = "item-header";
-    
+
     const nameEl = document.createElement("h3");
     nameEl.className = "item-name";
     nameEl.textContent = name;
-    
+
     const priceEl = document.createElement("span");
     priceEl.className = "item-price";
     priceEl.textContent = `$${price.toFixed(2)}`;
-    
+
     header.appendChild(nameEl);
     header.appendChild(priceEl);
-    
+
     const descEl = document.createElement("p");
     descEl.className = "item-desc";
     descEl.textContent = description;
-    
+
     const footer = document.createElement("div");
     footer.className = "item-footer";
-    
+
     const categoryEl = document.createElement("span");
     categoryEl.className = "item-category";
     categoryEl.textContent = category;
-    
+
     footer.appendChild(categoryEl);
-    
+
     content.appendChild(header);
     content.appendChild(descEl);
     content.appendChild(footer);
     menuItem.appendChild(content);
     fragment.appendChild(menuItem);
   }
-  
+
   elements.menuGrid.innerHTML = "";
   elements.menuGrid.appendChild(fragment);
-  
+
   if (state.settings) {
     applyVisualSettingsOnly(state.settings);
   }
@@ -561,11 +603,11 @@ function renderMenu(items) {
  */
 function initScrollToTop() {
   if (!elements.scrollToTopBtn) return;
-  
+
   const handleScroll = debounce(() => {
     elements.scrollToTopBtn.classList.toggle("show", window.pageYOffset > 300);
   }, 100);
-  
+
   window.addEventListener("scroll", handleScroll, { passive: true });
   elements.scrollToTopBtn.addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -581,10 +623,10 @@ function initScrollToTop() {
  */
 function hideLoadingScreen() {
   if (!elements.loadingScreen) return;
-  
+
   elements.loadingScreen.classList.add("fade-out");
   document.body.classList.remove("loading");
-  
+
   requestAnimationFrame(() => {
     setTimeout(() => {
       elements.loadingScreen.style.display = "none";
@@ -605,21 +647,21 @@ async function loadMenuData() {
     const response = await fetch("data.json", {
       cache: "default",
       headers: {
-        "Accept": "application/json"
-      }
+        Accept: "application/json",
+      },
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    
+
     // Validate data structure
     if (!Array.isArray(data)) {
       throw new Error("Invalid menu data format");
     }
-    
+
     state.menuData = data;
     return data;
   } catch (error) {
@@ -639,18 +681,18 @@ async function initialize() {
   try {
     // Initialize DOM elements
     initializeElements();
-    
+
     // Validate critical elements
     if (!elements.menuGrid || !elements.filtersContainer) {
       throw new Error("Required DOM elements not found");
     }
-    
+
     // Load settings and menu data in parallel for faster loading
     const [settingsResult, menuResult] = await Promise.allSettled([
       loadAndApplySettings(),
-      loadMenuData()
+      loadMenuData(),
     ]);
-    
+
     // Process settings
     if (settingsResult.status === "fulfilled" && settingsResult.value) {
       // Settings already applied in loadAndApplySettings
@@ -660,7 +702,7 @@ async function initialize() {
       state.filterCategories = DEFAULT_FILTER_CATEGORIES;
       renderFilters();
     }
-    
+
     // Process menu data
     if (menuResult.status === "fulfilled" && menuResult.value) {
       state.menuData = menuResult.value;
@@ -668,12 +710,12 @@ async function initialize() {
     } else {
       throw new Error("Failed to load menu data");
     }
-    
+
     // Initialize components (non-blocking)
     initSortModal();
     updateSortButtonText();
     initScrollToTop();
-    
+
     // Hide loading screen
     hideLoadingScreen();
   } catch (error) {

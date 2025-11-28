@@ -39,7 +39,11 @@ body.loading {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--primary-color) 0%,
+    var(--secondary-color) 100%
+  );
   z-index: 9999;
   display: flex;
   justify-content: center;
@@ -129,7 +133,8 @@ body.loading {
 
 /* Animations */
 @keyframes burgerBounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) scale(1);
   }
   50% {
@@ -138,7 +143,8 @@ body.loading {
 }
 
 @keyframes bunTop {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) rotate(0deg);
   }
   25% {
@@ -150,7 +156,8 @@ body.loading {
 }
 
 @keyframes bunBottom {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) rotate(0deg);
   }
   25% {
@@ -162,7 +169,8 @@ body.loading {
 }
 
 @keyframes pattyPulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleY(1);
     opacity: 1;
   }
@@ -173,7 +181,8 @@ body.loading {
 }
 
 @keyframes cheeseMelt {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleX(1) translateY(0);
     opacity: 1;
   }
@@ -184,7 +193,8 @@ body.loading {
 }
 
 @keyframes textPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -262,13 +272,17 @@ header {
 }
 
 .filters::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.05));
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.2),
+    rgba(0, 0, 0, 0.05)
+  );
   border-radius: 12px;
   pointer-events: none;
   z-index: 0;
@@ -690,7 +704,6 @@ footer a:hover {
     opacity: 1;
   }
 }
-
 
 /* Scroll to Top Button */
 .scroll-to-top {

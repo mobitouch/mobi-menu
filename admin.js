@@ -12,7 +12,9 @@
  * Development mode flag (set to false in production)
  * @type {boolean}
  */
-const IS_DEVELOPMENT = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const IS_DEVELOPMENT =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
 
 // ============================================================================
 // STATE MANAGEMENT
@@ -30,7 +32,8 @@ const state = {
   uiSettings: null,
   isAuthenticated: false,
   selectedItems: new Set(),
-  theme: "dark" // 'dark' or 'light'
+  theme: "dark", // 'dark' or 'light'
+  layout: "grid", // 'grid' or 'list'
 };
 
 // ============================================================================
@@ -99,7 +102,7 @@ const elements = {
   confirmModalCancel: null,
   clearSearchBtn: null,
   themeToggleBtn: null,
-  printMenuBtn: null
+  printMenuBtn: null,
 };
 
 /**
@@ -128,7 +131,9 @@ function initializeElements() {
     elements.itemTags = document.getElementById("item-tags");
     elements.itemImage = document.getElementById("item-image");
     elements.imagePreview = document.getElementById("image-preview");
-    elements.imagePreviewContainer = document.getElementById("image-preview-container");
+    elements.imagePreviewContainer = document.getElementById(
+      "image-preview-container"
+    );
     elements.removeImageBtn = document.getElementById("remove-image-btn");
     elements.formTitle = document.getElementById("form-title");
     elements.submitBtn = document.getElementById("submit-btn");
@@ -138,7 +143,9 @@ function initializeElements() {
     elements.itemFilter = document.getElementById("item-filter");
     elements.settingsPanel = document.getElementById("settings-panel");
     elements.settingsOverlay = document.getElementById("settings-overlay");
-    elements.closeSettingsPanel = document.getElementById("close-settings-panel");
+    elements.closeSettingsPanel = document.getElementById(
+      "close-settings-panel"
+    );
     elements.settingsForm = document.getElementById("settings-form");
     elements.resetSettingsBtn = document.getElementById("reset-settings-btn");
     elements.filtersList = document.getElementById("filters-list");
@@ -166,16 +173,23 @@ function initializeElements() {
     elements.cancelImportBtn = document.getElementById("cancel-import-btn");
     elements.confirmImportBtn = document.getElementById("confirm-import-btn");
     elements.importFileInput = document.getElementById("import-file-input");
-    elements.importReplaceCheckbox = document.getElementById("import-replace-checkbox");
+    elements.importReplaceCheckbox = document.getElementById(
+      "import-replace-checkbox"
+    );
     elements.confirmModal = document.getElementById("confirm-modal");
     elements.confirmModalTitle = document.getElementById("confirm-modal-title");
-    elements.confirmModalMessage = document.getElementById("confirm-modal-message");
+    elements.confirmModalMessage = document.getElementById(
+      "confirm-modal-message"
+    );
     elements.confirmModalOk = document.getElementById("confirm-modal-ok");
-    elements.confirmModalCancel = document.getElementById("confirm-modal-cancel");
+    elements.confirmModalCancel = document.getElementById(
+      "confirm-modal-cancel"
+    );
     elements.clearSearchBtn = document.getElementById("clear-search-btn");
     elements.themeToggleBtn = document.getElementById("theme-toggle-btn");
     elements.printMenuBtn = document.getElementById("print-menu-btn");
-    
+    elements.layoutToggleBtn = document.getElementById("layout-toggle-btn");
+
     if (!elements.loginForm) {
     }
   } catch (error) {
@@ -195,7 +209,10 @@ function initializeElements() {
 function addEventListener(element, event, handler, options = {}) {
   if (!element || typeof element.addEventListener !== "function") {
     if (IS_DEVELOPMENT) {
-      console.warn("Cannot add event listener: element is not a valid DOM element", element);
+      console.warn(
+        "Cannot add event listener: element is not a valid DOM element",
+        element
+      );
     }
     return;
   }
@@ -277,7 +294,7 @@ function showMessage(message, type = "success", duration = 4000) {
   // Create toast element
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
-  
+
   // Icon based on type
   let iconSvg = "";
   switch (type) {
@@ -301,7 +318,7 @@ function showMessage(message, type = "success", duration = 4000) {
         <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
   }
-  
+
   toast.innerHTML = `
     <div class="toast-icon">${iconSvg}</div>
     <div class="toast-content">
@@ -314,15 +331,15 @@ function showMessage(message, type = "success", duration = 4000) {
     </button>
     <div class="toast-progress"></div>
   `;
-  
+
   // Add to container
   toastContainer.appendChild(toast);
-  
+
   // Trigger animation
   requestAnimationFrame(() => {
     toast.classList.add("show");
   });
-  
+
   // Close button handler
   const closeBtn = toast.querySelector(".toast-close");
   const closeToast = () => {
@@ -333,19 +350,19 @@ function showMessage(message, type = "success", duration = 4000) {
       }
     }, 300);
   };
-  
+
   if (closeBtn) {
     closeBtn.addEventListener("click", closeToast);
   }
-  
+
   // Auto-dismiss after duration
   const progressBar = toast.querySelector(".toast-progress");
   if (progressBar) {
     progressBar.style.animationDuration = `${duration}ms`;
   }
-  
+
   const timeout = setTimeout(closeToast, duration);
-  
+
   // Pause on hover
   toast.addEventListener("mouseenter", () => {
     clearTimeout(timeout);
@@ -353,7 +370,7 @@ function showMessage(message, type = "success", duration = 4000) {
       progressBar.style.animationPlayState = "paused";
     }
   });
-  
+
   toast.addEventListener("mouseleave", () => {
     const newTimeout = setTimeout(closeToast, duration);
     if (progressBar) {
@@ -371,7 +388,13 @@ function showMessage(message, type = "success", duration = 4000) {
  * @param {string} type - Modal type: 'delete', 'warning', 'info' (optional)
  * @returns {Promise<boolean>} Promise that resolves to true if confirmed, false if cancelled
  */
-function showConfirmModal(message, title = "Confirm Action", okText = "Confirm", cancelText = "Cancel", type = "info") {
+function showConfirmModal(
+  message,
+  title = "Confirm Action",
+  okText = "Confirm",
+  cancelText = "Cancel",
+  type = "info"
+) {
   return new Promise((resolve) => {
     if (!elements.confirmModal || !elements.confirmModalMessage) {
       if (IS_DEVELOPMENT) {
@@ -388,7 +411,7 @@ function showConfirmModal(message, title = "Confirm Action", okText = "Confirm",
     if (elements.confirmModalMessage) {
       elements.confirmModalMessage.textContent = message;
     }
-    
+
     // Set button text and styles
     if (elements.confirmModalOk) {
       elements.confirmModalOk.textContent = okText;
@@ -400,7 +423,7 @@ function showConfirmModal(message, title = "Confirm Action", okText = "Confirm",
         elements.confirmModalOk.classList.add("btn-delete");
       }
     }
-    
+
     if (elements.confirmModalCancel) {
       elements.confirmModalCancel.textContent = cancelText;
     }
@@ -418,7 +441,7 @@ function showConfirmModal(message, title = "Confirm Action", okText = "Confirm",
       cleanup();
       resolve(true);
     };
-    
+
     const cancelHandler = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -428,7 +451,10 @@ function showConfirmModal(message, title = "Confirm Action", okText = "Confirm",
     };
 
     const escapeHandler = (e) => {
-      if (e.key === "Escape" && elements.confirmModal.classList.contains("show")) {
+      if (
+        e.key === "Escape" &&
+        elements.confirmModal.classList.contains("show")
+      ) {
         cancelHandler(e);
       }
     };
@@ -451,7 +477,7 @@ function showConfirmModal(message, title = "Confirm Action", okText = "Confirm",
     if (elements.confirmModalOk) {
       elements.confirmModalOk.onclick = okHandler;
     }
-    
+
     if (elements.confirmModalCancel) {
       elements.confirmModalCancel.onclick = cancelHandler;
     }
@@ -499,7 +525,7 @@ function showMenuSection() {
   if (elements.statsSection) elements.statsSection.style.display = "none";
   if (elements.pageTitle) elements.pageTitle.textContent = "Menu Items";
   updateActiveNav("menu");
-  
+
   // Sync search input with state when showing menu section
   if (elements.itemFilter && state.currentFilter) {
     elements.itemFilter.value = state.currentFilter;
@@ -507,7 +533,7 @@ function showMenuSection() {
       elements.clearSearchBtn.style.display = "flex";
     }
   }
-  
+
   // Re-render to ensure search is applied
   renderMenuItems();
 }
@@ -538,7 +564,7 @@ function hideItemModal() {
 
 function updateActiveNav(section) {
   if (elements.navItems) {
-    elements.navItems.forEach(item => {
+    elements.navItems.forEach((item) => {
       if (item.dataset.section === section) {
         item.classList.add("active");
       } else {
@@ -561,14 +587,14 @@ async function checkAuth() {
     const response = await fetch("/api/auth/status", {
       cache: "no-store",
       headers: {
-        "Accept": "application/json"
-      }
+        Accept: "application/json",
+      },
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    
+
     const data = await response.json();
 
     if (data.isAuthenticated) {
@@ -589,7 +615,9 @@ async function checkAuth() {
 }
 
 function initializeSortButtons() {
-  const defaultSortBtn = document.querySelector('.sort-btn[data-sort="default"]');
+  const defaultSortBtn = document.querySelector(
+    '.sort-btn[data-sort="default"]'
+  );
   if (defaultSortBtn && !document.querySelector(".sort-btn.active")) {
     defaultSortBtn.classList.add("active");
   }
@@ -622,14 +650,16 @@ function initAuth() {
     // Will retry in initialize() function
     return;
   }
-  
+
   const loginHandler = async (e) => {
     e.preventDefault();
 
-    const passwordInput = elements.passwordInput || document.getElementById("password-input");
-    const loginError = elements.loginError || document.getElementById("login-error");
+    const passwordInput =
+      elements.passwordInput || document.getElementById("password-input");
+    const loginError =
+      elements.loginError || document.getElementById("login-error");
     const password = passwordInput?.value;
-    
+
     if (!password) {
       if (loginError) {
         loginError.textContent = "Please enter a password";
@@ -647,7 +677,9 @@ function initAuth() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(
+          errorData.message || `HTTP ${response.status}: ${response.statusText}`
+        );
       }
 
       const data = await response.json();
@@ -666,15 +698,20 @@ function initAuth() {
           loginError.textContent = data.message || "Incorrect password";
           loginError.style.display = "block";
         }
-        showMessage(data.message || "Incorrect password. Please try again.", "error", 4000);
+        showMessage(
+          data.message || "Incorrect password. Please try again.",
+          "error",
+          4000
+        );
       }
     } catch (error) {
       if (IS_DEVELOPMENT) {
         console.error("Login error:", error);
       }
-      const errorMessage = error.message && error.message.includes("401") 
-        ? "Incorrect password. Please try again."
-        : "Login failed. Please try again.";
+      const errorMessage =
+        error.message && error.message.includes("401")
+          ? "Incorrect password. Please try again."
+          : "Login failed. Please try again.";
       if (loginError) {
         loginError.textContent = errorMessage;
         loginError.style.display = "block";
@@ -682,14 +719,14 @@ function initAuth() {
       showMessage(errorMessage, "error", 4000);
     }
   };
-  
+
   try {
     addEventListener(loginForm, "submit", loginHandler);
   } catch (error) {
     loginForm.addEventListener("submit", loginHandler);
   }
 
-  const logoutBtn = elements.logoutBtn || document.querySelector('.logout-nav');
+  const logoutBtn = elements.logoutBtn || document.querySelector(".logout-nav");
   if (logoutBtn) {
     const logoutHandler = async (e) => {
       e.preventDefault();
@@ -716,7 +753,7 @@ function initAuth() {
         }, 500);
       }
     };
-    
+
     try {
       addEventListener(logoutBtn, "click", logoutHandler);
     } catch (error) {
@@ -738,10 +775,10 @@ async function loadMenuItems() {
     const response = await fetch("/api/menu", {
       cache: "no-store",
       headers: {
-        "Accept": "application/json"
-      }
+        Accept: "application/json",
+      },
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: Failed to load menu items`);
     }
@@ -765,9 +802,9 @@ async function loadMenuItems() {
  */
 function sortMenuItems(items, sortType) {
   if (!Array.isArray(items)) return [];
-  
+
   const sorted = [...items];
-  
+
   switch (sortType) {
     case "name-asc":
       return sorted.sort((a, b) => {
@@ -820,24 +857,24 @@ function sortMenuItems(items, sortType) {
  */
 function filterMenuItems(items, filterText) {
   if (!Array.isArray(items)) return [];
-  if (!filterText || typeof filterText !== 'string') return items;
-  
+  if (!filterText || typeof filterText !== "string") return items;
+
   const searchTerm = filterText.toLowerCase().trim();
   if (searchTerm === "") return items;
-  
+
   const results = [];
-  
+
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     let matches = false;
-    
+
     if (item.name) {
       const name = String(item.name).toLowerCase();
       if (name.includes(searchTerm)) {
         matches = true;
       }
     }
-    
+
     // Check category
     if (!matches && item.category) {
       const category = String(item.category).toLowerCase();
@@ -845,7 +882,7 @@ function filterMenuItems(items, filterText) {
         matches = true;
       }
     }
-    
+
     // Check description
     if (!matches && item.description) {
       const description = String(item.description).toLowerCase();
@@ -853,7 +890,7 @@ function filterMenuItems(items, filterText) {
         matches = true;
       }
     }
-    
+
     // Check price (exact match or partial)
     if (!matches && item.price !== undefined && item.price !== null) {
       const price = String(item.price);
@@ -869,7 +906,7 @@ function filterMenuItems(items, filterText) {
         }
       }
     }
-    
+
     // Check ID if search term is numeric
     if (!matches && !isNaN(searchTerm) && !isNaN(parseInt(searchTerm))) {
       const itemId = String(item.id || "");
@@ -877,21 +914,27 @@ function filterMenuItems(items, filterText) {
         matches = true;
       }
     }
-    
+
     // Check tags
     if (!matches && item.tags) {
-      const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? item.tags.split(",").map(t => t.trim()) : []);
-      const tagMatch = tags.some(tag => tag.toLowerCase().includes(searchTerm));
+      const tags = Array.isArray(item.tags)
+        ? item.tags
+        : item.tags
+        ? item.tags.split(",").map((t) => t.trim())
+        : [];
+      const tagMatch = tags.some((tag) =>
+        tag.toLowerCase().includes(searchTerm)
+      );
       if (tagMatch) {
         matches = true;
       }
     }
-    
+
     if (matches) {
       results.push(item);
     }
   }
-  
+
   return results;
 }
 
@@ -903,17 +946,21 @@ function renderMenuItems() {
 
   const filteredItems = filterMenuItems(state.menuItems, state.currentFilter);
   const sortedItems = sortMenuItems(filteredItems, state.currentSort);
-  const countText = `${sortedItems.length}${state.currentFilter ? ` of ${state.menuItems.length}` : ''}`;
-  
+  const countText = `${sortedItems.length}${
+    state.currentFilter ? ` of ${state.menuItems.length}` : ""
+  }`;
+
   elements.itemCount.textContent = countText;
 
   if (sortedItems.length === 0) {
     const emptyMessage = document.createElement("p");
-    emptyMessage.style.cssText = "color: var(--text-muted); text-align: center; padding: 20px;";
+    emptyMessage.style.cssText =
+      "color: var(--text-muted); text-align: center; padding: 20px;";
     if (state.menuItems.length === 0) {
       emptyMessage.textContent = "No items yet. Add your first item!";
     } else {
-      emptyMessage.textContent = "No items match your search. Try a different term.";
+      emptyMessage.textContent =
+        "No items match your search. Try a different term.";
     }
     elements.itemsList.innerHTML = "";
     elements.itemsList.appendChild(emptyMessage);
@@ -921,29 +968,38 @@ function renderMenuItems() {
   }
 
   const fragment = document.createDocumentFragment();
-  
+
   sortedItems.forEach((item) => {
     const id = item.id || "";
     const name = escapeHtml(item.name || "");
     const category = escapeHtml(item.category || "");
     const description = escapeHtml(item.description || "");
     const price = parseFloat(item.price) || 0;
-    const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? item.tags.split(",").map(t => t.trim()).filter(t => t) : []);
+    const tags = Array.isArray(item.tags)
+      ? item.tags
+      : item.tags
+      ? item.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t)
+      : [];
     const isSelected = state.selectedItems.has(id);
-    
+
     const card = document.createElement("div");
-    card.className = `item-card ${isSelected ? 'selected' : ''}`;
+    card.className = `item-card ${isSelected ? "selected" : ""}`;
     card.dataset.id = id;
-    
+
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.className = "item-card-checkbox";
     checkbox.checked = isSelected;
-    checkbox.addEventListener("change", () => toggleItemSelection(id, checkbox.checked));
-    
+    checkbox.addEventListener("change", () =>
+      toggleItemSelection(id, checkbox.checked)
+    );
+
     const itemInfo = document.createElement("div");
     itemInfo.className = "item-info";
-    
+
     // Item image (if available)
     if (item.image) {
       const imageContainer = document.createElement("div");
@@ -956,33 +1012,38 @@ function renderMenuItems() {
       imageContainer.appendChild(img);
       itemInfo.appendChild(imageContainer);
     }
-    
-    // Item ID badge
+
+    // Item header container for ID, title, and category
+    const itemHeader = document.createElement("div");
+    itemHeader.className = "item-info-header";
+
     const idBadge = document.createElement("span");
     idBadge.className = "item-id-badge";
     idBadge.textContent = `ID: ${id}`;
     idBadge.title = `Item ID: ${id}`;
-    
+
     const title = document.createElement("h3");
     title.textContent = name;
-    
+
     const badge = document.createElement("span");
     badge.className = "category-badge";
     badge.textContent = category;
-    
+
+    itemHeader.appendChild(idBadge);
+    itemHeader.appendChild(title);
+    itemHeader.appendChild(badge);
+
     const priceEl = document.createElement("p");
     priceEl.className = "item-price";
     priceEl.textContent = `$${price.toFixed(2)}`;
-    
-    itemInfo.appendChild(idBadge);
-    itemInfo.appendChild(title);
-    itemInfo.appendChild(badge);
-    
+
+    itemInfo.appendChild(itemHeader);
+
     // Tags display
     if (tags.length > 0) {
       const tagsContainer = document.createElement("div");
       tagsContainer.className = "item-tags-container";
-      tags.forEach(tag => {
+      tags.forEach((tag) => {
         const tagEl = document.createElement("span");
         tagEl.className = "item-tag";
         tagEl.textContent = escapeHtml(tag);
@@ -990,7 +1051,7 @@ function renderMenuItems() {
       });
       itemInfo.appendChild(tagsContainer);
     }
-    
+
     if (description) {
       const desc = document.createElement("p");
       desc.className = "item-description";
@@ -998,26 +1059,44 @@ function renderMenuItems() {
       itemInfo.appendChild(desc);
     }
     itemInfo.appendChild(priceEl);
-    
+
     const actions = document.createElement("div");
     actions.className = "item-actions";
-    
-    const duplicateBtn = createActionButton("Duplicate", "btn-duplicate", () => duplicateItem(id), "Duplicate " + name);
-    const editBtn = createActionButton("Edit", "btn-edit", () => editItem(id), "Edit " + name);
-    const deleteBtn = createActionButton("Delete", "btn-delete", () => deleteItem(id), "Delete " + name);
-    
+
+    const duplicateBtn = createActionButton(
+      "Duplicate",
+      "btn-duplicate",
+      () => duplicateItem(id),
+      "Duplicate " + name
+    );
+    const editBtn = createActionButton(
+      "Edit",
+      "btn-edit",
+      () => editItem(id),
+      "Edit " + name
+    );
+    const deleteBtn = createActionButton(
+      "Delete",
+      "btn-delete",
+      () => deleteItem(id),
+      "Delete " + name
+    );
+
     actions.appendChild(duplicateBtn);
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
-    
+
     card.appendChild(checkbox);
     card.appendChild(itemInfo);
     card.appendChild(actions);
     fragment.appendChild(card);
   });
-  
+
   elements.itemsList.innerHTML = "";
   elements.itemsList.appendChild(fragment);
+
+  // Apply current layout
+  applyLayout(state.layout);
 }
 
 /**
@@ -1033,22 +1112,25 @@ function createActionButton(text, className, onClick, ariaLabel) {
   button.className = className;
   button.setAttribute("aria-label", ariaLabel);
   button.addEventListener("click", onClick);
-  
+
   let svgPath = "";
   if (className === "btn-duplicate") {
-    svgPath = "M5 3H2a1 1 0 00-1 1v11a1 1 0 001 1h11a1 1 0 001-1v-3M13 1h3v3M9 7h6";
+    svgPath =
+      "M5 3H2a1 1 0 00-1 1v11a1 1 0 001 1h11a1 1 0 001-1v-3M13 1h3v3M9 7h6";
   } else if (className === "btn-edit") {
-    svgPath = "M11.5 2.5a1.5 1.5 0 010 2.12l-7 7L2 13l1.38-2.5 7-7a1.5 1.5 0 012.12 0z";
+    svgPath =
+      "M11.5 2.5a1.5 1.5 0 010 2.12l-7 7L2 13l1.38-2.5 7-7a1.5 1.5 0 012.12 0z";
   } else if (className === "btn-delete") {
-    svgPath = "M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1m2 0v9a1 1 0 01-1 1H4a1 1 0 01-1-1V4h10zM6 7v4M10 7v4";
+    svgPath =
+      "M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1m2 0v9a1 1 0 01-1 1H4a1 1 0 01-1-1V4h10zM6 7v4M10 7v4";
   }
-  
+
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", "12");
   svg.setAttribute("height", "12");
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("fill", "none");
-  
+
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
   path.setAttribute("d", svgPath);
   path.setAttribute("stroke", "currentColor");
@@ -1060,13 +1142,13 @@ function createActionButton(text, className, onClick, ariaLabel) {
     path.setAttribute("stroke-linecap", "round");
     path.setAttribute("stroke-linejoin", "round");
   }
-  
+
   svg.appendChild(path);
   button.appendChild(svg);
-  
+
   const textNode = document.createTextNode(" " + text);
   button.appendChild(textNode);
-  
+
   return button;
 }
 
@@ -1084,22 +1166,22 @@ function imageToBase64(file) {
       resolve(null);
       return;
     }
-    
+
     // Validate file type
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('File must be an image'));
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("File must be an image"));
       return;
     }
-    
+
     // Validate file size (2MB max)
     if (file.size > 2 * 1024 * 1024) {
-      reject(new Error('Image size must be less than 2MB'));
+      reject(new Error("Image size must be less than 2MB"));
       return;
     }
-    
+
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.onerror = () => reject(new Error("Failed to read image file"));
     reader.readAsDataURL(file);
   });
 }
@@ -1109,14 +1191,14 @@ function imageToBase64(file) {
  */
 function initImagePreview() {
   if (!elements.itemImage) return;
-  
+
   addEventListener(elements.itemImage, "change", async (e) => {
     const file = e.target.files[0];
     if (!file) {
       hideImagePreview();
       return;
     }
-    
+
     try {
       const base64 = await imageToBase64(file);
       if (base64 && elements.imagePreview) {
@@ -1133,7 +1215,7 @@ function initImagePreview() {
       hideImagePreview();
     }
   });
-  
+
   if (elements.removeImageBtn) {
     addEventListener(elements.removeImageBtn, "click", () => {
       if (elements.itemImage) {
@@ -1175,21 +1257,26 @@ function hideImagePreview() {
 
 function initItemForm() {
   if (!elements.itemForm) return;
-  
+
   // Initialize image preview
   initImagePreview();
-  
+
   addEventListener(elements.itemForm, "submit", async (e) => {
     e.preventDefault();
 
     // Parse tags from comma-separated string
     const tagsInput = elements.itemTags?.value?.trim() || "";
-    const tags = tagsInput ? tagsInput.split(",").map(t => t.trim()).filter(t => t) : [];
-    
+    const tags = tagsInput
+      ? tagsInput
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t)
+      : [];
+
     // Handle image upload
     let imageBase64 = null;
     const imageFile = elements.itemImage?.files[0];
-    
+
     if (imageFile) {
       // New image file selected
       try {
@@ -1202,14 +1289,14 @@ function initItemForm() {
     } else {
       imageBase64 = state.currentImageBase64;
     }
-    
+
     const itemData = {
       name: elements.itemName?.value?.trim() || "",
       category: elements.itemCategory?.value?.trim() || "",
       price: parseFloat(elements.itemPrice?.value) || 0,
       description: elements.itemDescription?.value?.trim() || "",
       tags: tags,
-      image: imageBase64
+      image: imageBase64,
     };
 
     if (!itemData.name) {
@@ -1227,7 +1314,7 @@ function initItemForm() {
 
     try {
       let response;
-      const url = state.editingItemId 
+      const url = state.editingItemId
         ? `/api/menu/${state.editingItemId}`
         : "/api/menu";
       const method = state.editingItemId ? "PUT" : "POST";
@@ -1269,7 +1356,7 @@ function initItemForm() {
  * Edit menu item
  * @param {number} id - Item ID
  */
-window.editItem = function(id) {
+window.editItem = function (id) {
   const item = state.menuItems.find((i) => i.id === id);
   if (!item) {
     showMessage("Item not found", "error");
@@ -1282,12 +1369,20 @@ window.editItem = function(id) {
   if (elements.itemName) elements.itemName.value = item.name || "";
   if (elements.itemCategory) elements.itemCategory.value = item.category || "";
   if (elements.itemPrice) elements.itemPrice.value = item.price || 0;
-  if (elements.itemDescription) elements.itemDescription.value = item.description || "";
+  if (elements.itemDescription)
+    elements.itemDescription.value = item.description || "";
   if (elements.itemTags) {
-    const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? item.tags.split(",").map(t => t.trim()).filter(t => t) : []);
+    const tags = Array.isArray(item.tags)
+      ? item.tags
+      : item.tags
+      ? item.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t)
+      : [];
     elements.itemTags.value = tags.join(", ");
   }
-  
+
   // Handle image
   if (item.image) {
     state.currentImageBase64 = item.image;
@@ -1301,7 +1396,8 @@ window.editItem = function(id) {
   }
 
   if (elements.formTitle) elements.formTitle.textContent = "Edit Item";
-  if (elements.submitBtnText) elements.submitBtnText.textContent = "Update Item";
+  if (elements.submitBtnText)
+    elements.submitBtnText.textContent = "Update Item";
   if (elements.cancelBtn) elements.cancelBtn.style.display = "inline-block";
 
   showItemModal();
@@ -1311,11 +1407,11 @@ window.editItem = function(id) {
  * Delete menu item
  * @param {number} id - Item ID
  */
-window.deleteItem = async function(id) {
+window.deleteItem = async function (id) {
   try {
     // Convert id to number if it's a string
-    const itemId = typeof id === 'string' ? parseInt(id, 10) : id;
-    
+    const itemId = typeof id === "string" ? parseInt(id, 10) : id;
+
     if (isNaN(itemId)) {
       showMessage("Invalid item ID", "error");
       return;
@@ -1328,7 +1424,7 @@ window.deleteItem = async function(id) {
       "Cancel",
       "delete"
     );
-    
+
     if (!confirmed) {
       return;
     }
@@ -1367,7 +1463,7 @@ window.deleteItem = async function(id) {
  * Duplicate menu item
  * @param {number} id - Item ID
  */
-window.duplicateItem = async function(id) {
+window.duplicateItem = async function (id) {
   const item = state.menuItems.find((i) => i.id === id);
   if (!item) {
     showMessage("Item not found", "error");
@@ -1380,8 +1476,15 @@ window.duplicateItem = async function(id) {
       category: item.category,
       price: item.price,
       description: item.description,
-      tags: Array.isArray(item.tags) ? item.tags : (item.tags ? item.tags.split(",").map(t => t.trim()).filter(t => t) : []),
-      image: item.image || null
+      tags: Array.isArray(item.tags)
+        ? item.tags
+        : item.tags
+        ? item.tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter((t) => t)
+        : [],
+      image: item.image || null,
     };
 
     const response = await fetch("/api/menu", {
@@ -1415,7 +1518,7 @@ window.duplicateItem = async function(id) {
  * @param {number} id - Item ID
  * @param {boolean} selected - Selection state
  */
-window.toggleItemSelection = function(id, selected) {
+window.toggleItemSelection = function (id, selected) {
   if (selected) {
     state.selectedItems.add(id);
   } else {
@@ -1434,7 +1537,9 @@ function updateBulkActionsBar() {
     elements.bulkActionsBar.style.display = count > 0 ? "flex" : "none";
   }
   if (elements.selectedCount) {
-    elements.selectedCount.textContent = `${count} item${count !== 1 ? 's' : ''} selected`;
+    elements.selectedCount.textContent = `${count} item${
+      count !== 1 ? "s" : ""
+    } selected`;
   }
 }
 
@@ -1456,7 +1561,9 @@ async function bulkDeleteItems() {
 
   const count = selectedIds.length;
   const confirmed = await showConfirmModal(
-    `Are you sure you want to delete ${count} item${count !== 1 ? 's' : ''}? This action cannot be undone.`,
+    `Are you sure you want to delete ${count} item${
+      count !== 1 ? "s" : ""
+    }? This action cannot be undone.`,
     "Delete Multiple Items",
     "Delete",
     "Cancel",
@@ -1494,9 +1601,19 @@ async function bulkDeleteItems() {
     updateBulkActionsBar();
 
     if (failCount === 0) {
-      showMessage(`Successfully deleted ${successCount} item${successCount !== 1 ? 's' : ''}`, "success");
+      showMessage(
+        `Successfully deleted ${successCount} item${
+          successCount !== 1 ? "s" : ""
+        }`,
+        "success"
+      );
     } else {
-      showMessage(`Deleted ${successCount} item${successCount !== 1 ? 's' : ''}, ${failCount} failed`, "error");
+      showMessage(
+        `Deleted ${successCount} item${
+          successCount !== 1 ? "s" : ""
+        }, ${failCount} failed`,
+        "error"
+      );
     }
   } catch (error) {
     if (IS_DEVELOPMENT) {
@@ -1520,7 +1637,7 @@ function calculateStatistics(items) {
       minPrice: 0,
       maxPrice: 0,
       categories: new Set(),
-      categoryStats: []
+      categoryStats: [],
     };
   }
 
@@ -1533,24 +1650,24 @@ function calculateStatistics(items) {
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const price = parseFloat(item.price) || 0;
-    
+
     // Update global stats
     totalValue += price;
     if (price < minPrice) minPrice = price;
     if (price > maxPrice) maxPrice = price;
 
     // Update category stats
-    const category = item.category || 'Uncategorized';
+    const category = item.category || "Uncategorized";
     if (!categoryMap.has(category)) {
       categoryMap.set(category, {
         name: category,
         count: 0,
         totalPrice: 0,
         minPrice: Infinity,
-        maxPrice: -Infinity
+        maxPrice: -Infinity,
       });
     }
-    
+
     const catStat = categoryMap.get(category);
     catStat.count++;
     catStat.totalPrice += price;
@@ -1559,13 +1676,15 @@ function calculateStatistics(items) {
   }
 
   // Convert category map to array and calculate averages
-  const categoryStats = Array.from(categoryMap.values()).map(cat => ({
-    name: cat.name,
-    count: cat.count,
-    minPrice: cat.minPrice === Infinity ? 0 : cat.minPrice,
-    maxPrice: cat.maxPrice === -Infinity ? 0 : cat.maxPrice,
-    avgPrice: cat.count > 0 ? cat.totalPrice / cat.count : 0
-  })).sort((a, b) => b.count - a.count);
+  const categoryStats = Array.from(categoryMap.values())
+    .map((cat) => ({
+      name: cat.name,
+      count: cat.count,
+      minPrice: cat.minPrice === Infinity ? 0 : cat.minPrice,
+      maxPrice: cat.maxPrice === -Infinity ? 0 : cat.maxPrice,
+      avgPrice: cat.count > 0 ? cat.totalPrice / cat.count : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
 
   const totalItems = items.length;
   const avgPrice = totalItems > 0 ? totalValue / totalItems : 0;
@@ -1577,7 +1696,7 @@ function calculateStatistics(items) {
     minPrice: minPrice === Infinity ? 0 : minPrice,
     maxPrice: maxPrice === -Infinity ? 0 : maxPrice,
     categories: new Set(categoryMap.keys()),
-    categoryStats
+    categoryStats,
   };
 }
 
@@ -1595,80 +1714,107 @@ function renderStatistics() {
 
   // Clear existing content efficiently
   statsGrid.innerHTML = "";
-  
+
   const fragment = document.createDocumentFragment();
   const statCards = [
-    { title: "Total Items", value: stats.totalItems, description: "Menu items in total", icon: ["M2 4h12", "M2 8h12", "M2 12h12"] },
-    { title: "Average Price", value: `$${stats.avgPrice.toFixed(2)}`, description: "Average item price", icon: ["M8 2v12", "M3 7h10"] },
-    { title: "Price Range", value: `$${stats.minPrice.toFixed(2)} - $${stats.maxPrice.toFixed(2)}`, description: "Lowest to highest price", icon: ["M3 4l5 4-5 4", "M13 4l-5 4 5 4"] },
-    { title: "Categories", value: stats.categories.size, description: "Unique categories", icon: ["M3 3h10v10H3z", "M3 8h10", "M8 3v10"] }
+    {
+      title: "Total Items",
+      value: stats.totalItems,
+      description: "Menu items in total",
+      icon: ["M2 4h12", "M2 8h12", "M2 12h12"],
+    },
+    {
+      title: "Average Price",
+      value: `$${stats.avgPrice.toFixed(2)}`,
+      description: "Average item price",
+      icon: ["M8 2v12", "M3 7h10"],
+    },
+    {
+      title: "Price Range",
+      value: `$${stats.minPrice.toFixed(2)} - $${stats.maxPrice.toFixed(2)}`,
+      description: "Lowest to highest price",
+      icon: ["M3 4l5 4-5 4", "M13 4l-5 4 5 4"],
+    },
+    {
+      title: "Categories",
+      value: stats.categories.size,
+      description: "Unique categories",
+      icon: ["M3 3h10v10H3z", "M3 8h10", "M8 3v10"],
+    },
   ];
-  
+
   for (let i = 0; i < statCards.length; i++) {
     const stat = statCards[i];
-    const card = createStatCard(stat.title, stat.value, stat.description, stat.icon);
+    const card = createStatCard(
+      stat.title,
+      stat.value,
+      stat.description,
+      stat.icon
+    );
     fragment.appendChild(card);
   }
-  
+
   // Category breakdown card
   const breakdownCard = document.createElement("div");
   breakdownCard.className = "stat-card";
   breakdownCard.style.gridColumn = "1 / -1";
-  
+
   const breakdownHeader = document.createElement("div");
   breakdownHeader.className = "stat-card-header";
   const breakdownTitle = document.createElement("span");
   breakdownTitle.className = "stat-card-title";
   breakdownTitle.textContent = "Category Breakdown";
   breakdownHeader.appendChild(breakdownTitle);
-  
+
   const breakdownContent = document.createElement("div");
   breakdownContent.style.marginTop = "16px";
-  
+
   // Build category breakdown using DocumentFragment
   const categoryFragment = document.createDocumentFragment();
   for (let i = 0; i < stats.categoryStats.length; i++) {
     const cat = stats.categoryStats[i];
     const catCard = document.createElement("div");
     catCard.className = "category-stat-card";
-    
+
     const catHeader = document.createElement("div");
     catHeader.className = "category-stat-header";
-    
+
     const catName = document.createElement("span");
     catName.className = "category-stat-name";
     catName.textContent = cat.name;
-    
+
     const catCount = document.createElement("span");
     catCount.className = "category-stat-count";
-    catCount.textContent = `${cat.count} item${cat.count !== 1 ? 's' : ''}`;
-    
+    catCount.textContent = `${cat.count} item${cat.count !== 1 ? "s" : ""}`;
+
     catHeader.appendChild(catName);
     catHeader.appendChild(catCount);
-    
+
     const catDetails = document.createElement("div");
     catDetails.className = "category-stat-details";
-    
+
     const priceRange = document.createElement("div");
     priceRange.className = "category-stat-price-range";
-    priceRange.textContent = `Range: $${cat.minPrice.toFixed(2)} - $${cat.maxPrice.toFixed(2)}`;
-    
+    priceRange.textContent = `Range: $${cat.minPrice.toFixed(
+      2
+    )} - $${cat.maxPrice.toFixed(2)}`;
+
     const avg = document.createElement("div");
     avg.textContent = `Avg: $${cat.avgPrice.toFixed(2)}`;
-    
+
     catDetails.appendChild(priceRange);
     catDetails.appendChild(avg);
-    
+
     catCard.appendChild(catHeader);
     catCard.appendChild(catDetails);
     categoryFragment.appendChild(catCard);
   }
-  
+
   breakdownContent.appendChild(categoryFragment);
   breakdownCard.appendChild(breakdownHeader);
   breakdownCard.appendChild(breakdownContent);
   fragment.appendChild(breakdownCard);
-  
+
   // Append all at once for better performance
   statsGrid.appendChild(fragment);
 }
@@ -1684,14 +1830,14 @@ function renderStatistics() {
 function createStatCard(title, value, description, iconPaths) {
   const card = document.createElement("div");
   card.className = "stat-card";
-  
+
   const header = document.createElement("div");
   header.className = "stat-card-header";
-  
+
   const titleEl = document.createElement("span");
   titleEl.className = "stat-card-title";
   titleEl.textContent = title;
-  
+
   const icon = document.createElement("div");
   icon.className = "stat-card-icon";
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1699,11 +1845,14 @@ function createStatCard(title, value, description, iconPaths) {
   svg.setAttribute("height", "16");
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("fill", "none");
-  
+
   const paths = Array.isArray(iconPaths) ? iconPaths : [iconPaths];
-  paths.forEach(path => {
+  paths.forEach((path) => {
     if (path) {
-      const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const pathEl = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
       pathEl.setAttribute("d", path);
       pathEl.setAttribute("stroke", "currentColor");
       pathEl.setAttribute("stroke-width", "1.5");
@@ -1714,23 +1863,23 @@ function createStatCard(title, value, description, iconPaths) {
       svg.appendChild(pathEl);
     }
   });
-  
+
   icon.appendChild(svg);
   header.appendChild(titleEl);
   header.appendChild(icon);
-  
+
   const valueEl = document.createElement("div");
   valueEl.className = "stat-card-value";
   valueEl.textContent = value;
-  
+
   const descEl = document.createElement("div");
   descEl.className = "stat-card-description";
   descEl.textContent = description;
-  
+
   card.appendChild(header);
   card.appendChild(valueEl);
   card.appendChild(descEl);
-  
+
   return card;
 }
 
@@ -1749,11 +1898,13 @@ async function exportMenuData() {
       throw new Error(data.message || "Export failed");
     }
 
-    const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(data.data, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `menu-export-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `menu-export-${new Date().toISOString().split("T")[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1798,13 +1949,19 @@ function hideImportModal() {
  * Import menu data from JSON file
  */
 async function importMenuData() {
-  if (!elements.importFileInput || !elements.importFileInput.files || elements.importFileInput.files.length === 0) {
+  if (
+    !elements.importFileInput ||
+    !elements.importFileInput.files ||
+    elements.importFileInput.files.length === 0
+  ) {
     showMessage("Please select a file to import", "error");
     return;
   }
 
   const file = elements.importFileInput.files[0];
-  const replace = elements.importReplaceCheckbox ? elements.importReplaceCheckbox.checked : false;
+  const replace = elements.importReplaceCheckbox
+    ? elements.importReplaceCheckbox.checked
+    : false;
 
   try {
     const fileText = await file.text();
@@ -1819,7 +1976,7 @@ async function importMenuData() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         data: importedData,
-        replace: replace
+        replace: replace,
       }),
     });
 
@@ -1830,7 +1987,12 @@ async function importMenuData() {
     const data = await response.json();
 
     if (data.success) {
-      showMessage(`Successfully imported ${data.count || importedData.length} item${(data.count || importedData.length) !== 1 ? 's' : ''}`, "success");
+      showMessage(
+        `Successfully imported ${data.count || importedData.length} item${
+          (data.count || importedData.length) !== 1 ? "s" : ""
+        }`,
+        "success"
+      );
       hideImportModal();
       await loadMenuItems();
       renderStatistics();
@@ -1841,7 +2003,11 @@ async function importMenuData() {
     if (IS_DEVELOPMENT) {
       console.error("Error importing data:", error);
     }
-    showMessage(error.message || "Failed to import menu data. Please check the file format.", "error");
+    showMessage(
+      error.message ||
+        "Failed to import menu data. Please check the file format.",
+      "error"
+    );
   }
 }
 
@@ -1879,26 +2045,28 @@ function initFilterAndSort() {
     // Update clear button visibility based on input value
     const updateClearButton = () => {
       if (elements.clearSearchBtn) {
-        elements.clearSearchBtn.style.display = elements.itemFilter.value.trim() ? "flex" : "none";
+        elements.clearSearchBtn.style.display = elements.itemFilter.value.trim()
+          ? "flex"
+          : "none";
       }
     };
-    
+
     // Initialize clear button visibility
     updateClearButton();
-    
+
     // Debounced filter function
     const debouncedFilter = debounce((e) => {
       state.currentFilter = e.target.value;
       updateClearButton();
       renderMenuItems();
     }, 300);
-    
+
     // Real-time clear button update (not debounced)
     addEventListener(elements.itemFilter, "input", (e) => {
       updateClearButton();
       debouncedFilter(e);
     });
-    
+
     // Handle Enter key to trigger immediate search
     addEventListener(elements.itemFilter, "keydown", (e) => {
       if (e.key === "Enter") {
@@ -1911,7 +2079,7 @@ function initFilterAndSort() {
         clearSearch();
       }
     });
-    
+
     // Clear search button
     if (elements.clearSearchBtn) {
       addEventListener(elements.clearSearchBtn, "click", () => {
@@ -1924,26 +2092,30 @@ function initFilterAndSort() {
   }
 
   // Use event delegation for sort buttons (more efficient)
-  const sortContainer = document.querySelector(".sort-buttons") || document.querySelector(".menu-controls");
+  const sortContainer =
+    document.querySelector(".sort-buttons") ||
+    document.querySelector(".menu-controls");
   if (sortContainer) {
     addEventListener(sortContainer, "click", (e) => {
       const btn = e.target.closest(".sort-btn");
       if (!btn) return;
-      
+
       // Update active state efficiently
       const allSortBtns = sortContainer.querySelectorAll(".sort-btn");
       for (let i = 0; i < allSortBtns.length; i++) {
         allSortBtns[i].classList.remove("active");
       }
       btn.classList.add("active");
-      
+
       state.currentSort = btn.getAttribute("data-sort") || "default";
       renderMenuItems();
     });
   } else {
     document.querySelectorAll(".sort-btn").forEach((btn) => {
       addEventListener(btn, "click", () => {
-        document.querySelectorAll(".sort-btn").forEach((b) => b.classList.remove("active"));
+        document
+          .querySelectorAll(".sort-btn")
+          .forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         state.currentSort = btn.getAttribute("data-sort") || "default";
         renderMenuItems();
@@ -1980,8 +2152,8 @@ function getDefaultSettings() {
       { category: "dessert", label: "Dessert", enabled: true },
       { category: "drinks", label: "Drinks", enabled: true },
       { category: "add ons", label: "Add Ons", enabled: true },
-      { category: "dips", label: "Dips", enabled: true }
-    ]
+      { category: "dips", label: "Dips", enabled: true },
+    ],
   };
 }
 
@@ -1993,15 +2165,15 @@ function getAvailableCategories() {
   if (!Array.isArray(state.menuItems) || state.menuItems.length === 0) {
     return [];
   }
-  
+
   const categorySet = new Set();
   for (let i = 0; i < state.menuItems.length; i++) {
     const category = state.menuItems[i].category;
-    if (category && typeof category === 'string' && category.trim()) {
+    if (category && typeof category === "string" && category.trim()) {
       categorySet.add(category.trim());
     }
   }
-  
+
   // Convert to sorted array
   return Array.from(categorySet).sort();
 }
@@ -2013,26 +2185,30 @@ function getAvailableCategories() {
 async function loadSettings() {
   try {
     const response = await fetch("/api/settings", {
-      cache: "no-store"
+      cache: "no-store",
     });
     if (!response.ok) throw new Error("Failed to load settings");
-    
+
     state.uiSettings = await response.json();
-    
+
     // If no filter categories exist, try to auto-detect from menu items
-    if (!state.uiSettings.filterCategories || state.uiSettings.filterCategories.length === 0) {
+    if (
+      !state.uiSettings.filterCategories ||
+      state.uiSettings.filterCategories.length === 0
+    ) {
       const availableCategories = getAvailableCategories();
       if (availableCategories.length > 0) {
-        state.uiSettings.filterCategories = availableCategories.map(cat => ({
+        state.uiSettings.filterCategories = availableCategories.map((cat) => ({
           category: cat,
           label: cat.charAt(0).toUpperCase() + cat.slice(1),
-          enabled: true
+          enabled: true,
         }));
       } else {
-        state.uiSettings.filterCategories = getDefaultSettings().filterCategories;
+        state.uiSettings.filterCategories =
+          getDefaultSettings().filterCategories;
       }
     }
-    
+
     populateSettingsForm(state.uiSettings);
   } catch (error) {
     if (IS_DEVELOPMENT) {
@@ -2049,33 +2225,37 @@ async function loadSettings() {
  */
 function populateSettingsForm(settings) {
   const colorInputs = ["primary", "secondary", "text", "accent"];
-  
+
   colorInputs.forEach((colorType) => {
     const colorInput = document.getElementById(`${colorType}-color`);
     const textInput = document.getElementById(`${colorType}-color-text`);
-    const value = settings[`${colorType}Color`] || getDefaultSettings()[`${colorType}Color`];
-    
+    const value =
+      settings[`${colorType}Color`] ||
+      getDefaultSettings()[`${colorType}Color`];
+
     if (colorInput) colorInput.value = value;
     if (textInput) textInput.value = value;
   });
-  
+
   const numericInputs = {
     "heading-font-size": "headingFontSize",
     "item-name-size": "itemNameSize",
     "description-size": "descriptionSize",
     "price-size": "priceSize",
     "card-opacity": "cardOpacity",
-    "grid-gap": "gridGap"
+    "grid-gap": "gridGap",
   };
-  
+
   Object.entries(numericInputs).forEach(([id, key]) => {
     const input = document.getElementById(id);
     if (input) {
       input.value = settings[key] || getDefaultSettings()[key];
     }
   });
-  
-  renderFilterCategories(settings.filterCategories || getDefaultSettings().filterCategories);
+
+  renderFilterCategories(
+    settings.filterCategories || getDefaultSettings().filterCategories
+  );
 }
 
 /**
@@ -2085,12 +2265,12 @@ function initColorInputs() {
   ["primary", "secondary", "text", "accent"].forEach((colorType) => {
     const colorInput = document.getElementById(`${colorType}-color`);
     const textInput = document.getElementById(`${colorType}-color-text`);
-    
+
     if (colorInput && textInput) {
       addEventListener(colorInput, "input", (e) => {
         textInput.value = e.target.value;
       });
-      
+
       addEventListener(textInput, "input", (e) => {
         const value = e.target.value;
         if (/^#[0-9A-F]{6}$/i.test(value)) {
@@ -2108,42 +2288,42 @@ function initColorInputs() {
 function renderFilterCategories(filters) {
   if (!elements.filtersList) return;
   if (!Array.isArray(filters)) filters = [];
-  
+
   // Clear existing filters
   elements.filtersList.innerHTML = "";
-  
+
   // Use DocumentFragment for better performance
   const fragment = document.createDocumentFragment();
-  
+
   for (let i = 0; i < filters.length; i++) {
     const filter = filters[i];
     const filterItem = document.createElement("div");
     filterItem.className = "filter-item";
     filterItem.draggable = true;
     filterItem.dataset.index = i;
-    
+
     const dragHandle = document.createElement("span");
     dragHandle.className = "filter-drag-handle";
     dragHandle.textContent = "☰";
     dragHandle.style.cursor = "move";
-    
+
     const enabledCheckbox = document.createElement("input");
     enabledCheckbox.type = "checkbox";
     enabledCheckbox.className = "filter-enabled";
     enabledCheckbox.checked = filter.enabled !== false;
-    
+
     const categoryInput = document.createElement("input");
     categoryInput.type = "text";
     categoryInput.className = "filter-category";
     categoryInput.value = filter.category || "";
     categoryInput.placeholder = "Category value";
-    
+
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.className = "filter-label";
     labelInput.value = filter.label || "";
     labelInput.placeholder = "Display label";
-    
+
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "btn-remove-filter";
@@ -2152,16 +2332,16 @@ function renderFilterCategories(filters) {
     removeBtn.addEventListener("click", () => {
       window.removeFilter(i);
     });
-    
+
     filterItem.appendChild(dragHandle);
     filterItem.appendChild(enabledCheckbox);
     filterItem.appendChild(categoryInput);
     filterItem.appendChild(labelInput);
     filterItem.appendChild(removeBtn);
-    
+
     fragment.appendChild(filterItem);
   }
-  
+
   elements.filtersList.appendChild(fragment);
   enableDragAndDrop();
 }
@@ -2172,18 +2352,20 @@ function renderFilterCategories(filters) {
  */
 function getFilterCategories() {
   const filterItems = document.querySelectorAll(".filter-item");
-  return Array.from(filterItems).map(item => ({
-    category: item.querySelector(".filter-category")?.value?.trim() || "",
-    label: item.querySelector(".filter-label")?.value?.trim() || "",
-    enabled: item.querySelector(".filter-enabled")?.checked || false
-  })).filter(f => f.category && f.label);
+  return Array.from(filterItems)
+    .map((item) => ({
+      category: item.querySelector(".filter-category")?.value?.trim() || "",
+      label: item.querySelector(".filter-label")?.value?.trim() || "",
+      enabled: item.querySelector(".filter-enabled")?.checked || false,
+    }))
+    .filter((f) => f.category && f.label);
 }
 
 /**
  * Remove filter category
  * @param {number} index - Filter index
  */
-window.removeFilter = function(index) {
+window.removeFilter = function (index) {
   const filters = getFilterCategories();
   filters.splice(index, 1);
   renderFilterCategories(filters);
@@ -2195,12 +2377,14 @@ window.removeFilter = function(index) {
 function addFilter() {
   const filters = getFilterCategories();
   const availableCategories = getAvailableCategories();
-  
+
   let newCategory = "";
   let newLabel = "";
-  
+
   if (availableCategories.length > 0) {
-    const existingCategoriesSet = new Set(filters.map(f => f.category.toLowerCase()));
+    const existingCategoriesSet = new Set(
+      filters.map((f) => f.category.toLowerCase())
+    );
     for (let i = 0; i < availableCategories.length; i++) {
       const cat = availableCategories[i];
       if (!existingCategoriesSet.has(cat.toLowerCase())) {
@@ -2210,7 +2394,7 @@ function addFilter() {
       }
     }
   }
-  
+
   filters.push({ category: newCategory, label: newLabel, enabled: true });
   renderFilterCategories(filters);
 }
@@ -2220,41 +2404,56 @@ function addFilter() {
  */
 function enableDragAndDrop() {
   if (!elements.filtersList) return;
-  
+
   let draggedElement = null;
-  
+
   // Use event delegation for better performance
-  addEventListener(elements.filtersList, "dragstart", (e) => {
-    const item = e.target.closest(".filter-item");
-    if (!item) return;
-    
-    draggedElement = item;
-    item.classList.add("dragging");
-    e.dataTransfer.effectAllowed = "move";
-  }, true);
-  
-  addEventListener(elements.filtersList, "dragend", (e) => {
-    const item = e.target.closest(".filter-item");
-    if (!item) return;
-    
-    item.classList.remove("dragging");
-    draggedElement = null;
-  }, true);
-  
-  addEventListener(elements.filtersList, "dragover", (e) => {
-    const item = e.target.closest(".filter-item");
-    if (!item || !draggedElement) return;
-    
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const afterElement = getDragAfterElement(elements.filtersList, e.clientY);
-    if (afterElement == null) {
-      elements.filtersList.appendChild(draggedElement);
-    } else {
-      elements.filtersList.insertBefore(draggedElement, afterElement);
-    }
-  }, true);
-  
+  addEventListener(
+    elements.filtersList,
+    "dragstart",
+    (e) => {
+      const item = e.target.closest(".filter-item");
+      if (!item) return;
+
+      draggedElement = item;
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    },
+    true
+  );
+
+  addEventListener(
+    elements.filtersList,
+    "dragend",
+    (e) => {
+      const item = e.target.closest(".filter-item");
+      if (!item) return;
+
+      item.classList.remove("dragging");
+      draggedElement = null;
+    },
+    true
+  );
+
+  addEventListener(
+    elements.filtersList,
+    "dragover",
+    (e) => {
+      const item = e.target.closest(".filter-item");
+      if (!item || !draggedElement) return;
+
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const afterElement = getDragAfterElement(elements.filtersList, e.clientY);
+      if (afterElement == null) {
+        elements.filtersList.appendChild(draggedElement);
+      } else {
+        elements.filtersList.insertBefore(draggedElement, afterElement);
+      }
+    },
+    true
+  );
+
   const filterItems = elements.filtersList.querySelectorAll(".filter-item");
   for (let i = 0; i < filterItems.length; i++) {
     const item = filterItems[i];
@@ -2271,23 +2470,25 @@ function enableDragAndDrop() {
  * @returns {Element|null}
  */
 function getDragAfterElement(container, y) {
-  const draggableElements = container.querySelectorAll(".filter-item:not(.dragging)");
-  
+  const draggableElements = container.querySelectorAll(
+    ".filter-item:not(.dragging)"
+  );
+
   // Optimize: use for loop instead of reduce for better performance
   let closest = null;
   let closestOffset = Number.NEGATIVE_INFINITY;
-  
+
   for (let i = 0; i < draggableElements.length; i++) {
     const child = draggableElements[i];
     const box = child.getBoundingClientRect();
     const offset = y - box.top - box.height / 2;
-    
+
     if (offset < 0 && offset > closestOffset) {
       closestOffset = offset;
       closest = child;
     }
   }
-  
+
   return closest;
 }
 
@@ -2318,8 +2519,10 @@ function hideSettingsPanel() {
 
 function initSettingsPanel() {
   if (!elements.settingsPanel || !elements.closeSettingsPanel) return;
-  
-  const settingsNavItem = document.querySelector('.nav-item[data-section="settings"]');
+
+  const settingsNavItem = document.querySelector(
+    '.nav-item[data-section="settings"]'
+  );
   if (settingsNavItem) {
     addEventListener(settingsNavItem, "click", async (e) => {
       e.preventDefault();
@@ -2341,7 +2544,11 @@ function initSettingsPanel() {
   }
 
   addEventListener(document, "keydown", (e) => {
-    if (e.key === "Escape" && elements.settingsPanel && elements.settingsPanel.classList.contains("show")) {
+    if (
+      e.key === "Escape" &&
+      elements.settingsPanel &&
+      elements.settingsPanel.classList.contains("show")
+    ) {
       hideSettingsPanel();
     }
   });
@@ -2349,74 +2556,103 @@ function initSettingsPanel() {
   if (elements.settingsForm) {
     addEventListener(elements.settingsForm, "submit", async (e) => {
       e.preventDefault();
-      
+
       const filterCategories = getFilterCategories();
-      
-      const invalidFilters = filterCategories.filter(f => !f.category || !f.label);
+
+      const invalidFilters = filterCategories.filter(
+        (f) => !f.category || !f.label
+      );
       if (invalidFilters.length > 0) {
-        showMessage("Please fill in all filter category and label fields", "error");
+        showMessage(
+          "Please fill in all filter category and label fields",
+          "error"
+        );
         return;
       }
-      
-      const categoryValues = filterCategories.map(f => f.category.toLowerCase());
-      const duplicates = categoryValues.filter((cat, index) => categoryValues.indexOf(cat) !== index);
+
+      const categoryValues = filterCategories.map((f) =>
+        f.category.toLowerCase()
+      );
+      const duplicates = categoryValues.filter(
+        (cat, index) => categoryValues.indexOf(cat) !== index
+      );
       if (duplicates.length > 0) {
-        showMessage("Duplicate category values found. Please use unique categories.", "error");
+        showMessage(
+          "Duplicate category values found. Please use unique categories.",
+          "error"
+        );
         return;
       }
-      
+
       const colorRegex = /^#[0-9A-F]{6}$/i;
       const colors = {
         primary: document.getElementById("primary-color")?.value,
         secondary: document.getElementById("secondary-color")?.value,
         text: document.getElementById("text-color")?.value,
-        accent: document.getElementById("accent-color")?.value
+        accent: document.getElementById("accent-color")?.value,
       };
-      
+
       for (const [name, value] of Object.entries(colors)) {
         if (!value || !colorRegex.test(value)) {
-          showMessage(`Invalid ${name} color format. Please use hex format (e.g., #0d3b2e)`, "error");
+          showMessage(
+            `Invalid ${name} color format. Please use hex format (e.g., #0d3b2e)`,
+            "error"
+          );
           return;
         }
       }
-      
+
       const settings = {
         primaryColor: colors.primary,
         secondaryColor: colors.secondary,
         textColor: colors.text,
         accentColor: colors.accent,
-        headingFontSize: parseFloat(document.getElementById("heading-font-size")?.value),
-        itemNameSize: parseFloat(document.getElementById("item-name-size")?.value),
-        descriptionSize: parseFloat(document.getElementById("description-size")?.value),
+        headingFontSize: parseFloat(
+          document.getElementById("heading-font-size")?.value
+        ),
+        itemNameSize: parseFloat(
+          document.getElementById("item-name-size")?.value
+        ),
+        descriptionSize: parseFloat(
+          document.getElementById("description-size")?.value
+        ),
         priceSize: parseFloat(document.getElementById("price-size")?.value),
         cardOpacity: parseFloat(document.getElementById("card-opacity")?.value),
         gridGap: parseFloat(document.getElementById("grid-gap")?.value),
-        filterCategories: filterCategories
+        filterCategories: filterCategories,
       };
-      
-      if (isNaN(settings.headingFontSize) || settings.headingFontSize < 2 || settings.headingFontSize > 8) {
+
+      if (
+        isNaN(settings.headingFontSize) ||
+        settings.headingFontSize < 2 ||
+        settings.headingFontSize > 8
+      ) {
         showMessage("Heading font size must be between 2 and 8", "error");
         return;
       }
-      
-      if (isNaN(settings.cardOpacity) || settings.cardOpacity < 0 || settings.cardOpacity > 1) {
+
+      if (
+        isNaN(settings.cardOpacity) ||
+        settings.cardOpacity < 0 ||
+        settings.cardOpacity > 1
+      ) {
         showMessage("Card opacity must be between 0 and 1", "error");
         return;
       }
-      
+
       try {
         const response = await fetch("/api/settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(settings)
+          body: JSON.stringify(settings),
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
           showMessage("Settings saved successfully!", "success");
           state.uiSettings = settings;
@@ -2475,7 +2711,7 @@ function initThemeToggle() {
     state.theme = "dark";
     applyTheme("dark");
   }
-  
+
   if (elements.themeToggleBtn) {
     addEventListener(elements.themeToggleBtn, "click", () => {
       state.theme = state.theme === "dark" ? "light" : "dark";
@@ -2492,7 +2728,7 @@ function initThemeToggle() {
  */
 function applyTheme(theme) {
   const root = document.documentElement;
-  
+
   if (theme === "light") {
     root.classList.add("light-theme");
     root.classList.remove("dark-theme");
@@ -2500,7 +2736,7 @@ function applyTheme(theme) {
     root.classList.add("dark-theme");
     root.classList.remove("light-theme");
   }
-  
+
   // Update theme toggle button icon visibility
   if (elements.themeToggleBtn) {
     const sunIcon = elements.themeToggleBtn.querySelector(".theme-icon-sun");
@@ -2532,6 +2768,74 @@ function initPrintMenu() {
   }
 }
 
+// ============================================================================
+// LAYOUT TOGGLE
+// ============================================================================
+
+/**
+ * Initialize layout toggle functionality
+ */
+function initLayoutToggle() {
+  // Load layout preference from localStorage
+  const savedLayout = localStorage.getItem("adminLayout");
+  if (savedLayout === "list" || savedLayout === "grid") {
+    state.layout = savedLayout;
+  }
+
+  // Apply initial layout
+  applyLayout(state.layout);
+
+  // Set up toggle button
+  if (elements.layoutToggleBtn) {
+    addEventListener(elements.layoutToggleBtn, "click", () => {
+      toggleLayout();
+    });
+  }
+}
+
+/**
+ * Toggle between grid and list layout
+ */
+function toggleLayout() {
+  state.layout = state.layout === "grid" ? "list" : "grid";
+  applyLayout(state.layout);
+  localStorage.setItem("adminLayout", state.layout);
+  showMessage(`Switched to ${state.layout} layout`, "success", 2000);
+}
+
+/**
+ * Apply layout to the items grid
+ * @param {string} layout - Layout type ('grid' or 'list')
+ */
+function applyLayout(layout) {
+  if (!elements.itemsList) return;
+
+  const gridIcon = elements.layoutToggleBtn
+    ? elements.layoutToggleBtn.querySelector(".layout-icon-grid")
+    : null;
+  const listIcon = elements.layoutToggleBtn
+    ? elements.layoutToggleBtn.querySelector(".layout-icon-list")
+    : null;
+
+  if (layout === "list") {
+    elements.itemsList.classList.add("list-layout");
+    if (elements.layoutToggleBtn) {
+      elements.layoutToggleBtn.classList.add("active");
+      // In list mode, show grid icon (to switch back to grid)
+      if (gridIcon) gridIcon.style.display = "block";
+      if (listIcon) listIcon.style.display = "none";
+    }
+  } else {
+    elements.itemsList.classList.remove("list-layout");
+    if (elements.layoutToggleBtn) {
+      elements.layoutToggleBtn.classList.remove("active");
+      // In grid mode, show list icon (to switch to list)
+      if (gridIcon) gridIcon.style.display = "none";
+      if (listIcon) listIcon.style.display = "block";
+    }
+  }
+}
+
 /**
  * Print the menu
  */
@@ -2543,23 +2847,23 @@ function printMenu() {
       showMessage("Please allow pop-ups to print the menu", "error");
       return;
     }
-    
+
     const items = state.menuItems;
     if (!items || items.length === 0) {
       showMessage("No menu items to print", "warning");
       return;
     }
-    
+
     // Group items by category
     const itemsByCategory = {};
-    items.forEach(item => {
+    items.forEach((item) => {
       const category = item.category || "Uncategorized";
       if (!itemsByCategory[category]) {
         itemsByCategory[category] = [];
       }
       itemsByCategory[category].push(item);
     });
-    
+
     // Build print HTML
     const printHTML = `
 <!DOCTYPE html>
@@ -2684,29 +2988,60 @@ function printMenu() {
     <p>Menu</p>
   </div>
   
-  ${Object.keys(itemsByCategory).map(category => `
+  ${Object.keys(itemsByCategory)
+    .map(
+      (category) => `
     <div class="category-section">
       <h2 class="category-title">${escapeHtml(category)}</h2>
-      ${itemsByCategory[category].map(item => `
+      ${itemsByCategory[category]
+        .map(
+          (item) => `
         <div class="menu-item">
-          ${item.image ? `<div class="item-image-print"><img src="${item.image}" alt="${escapeHtml(item.name || "")}" /></div>` : ""}
+          ${
+            item.image
+              ? `<div class="item-image-print"><img src="${
+                  item.image
+                }" alt="${escapeHtml(item.name || "")}" /></div>`
+              : ""
+          }
           <div class="item-header">
             <div>
               <div class="item-name">${escapeHtml(item.name || "")}</div>
-              ${item.tags && Array.isArray(item.tags) && item.tags.length > 0 ? `
+              ${
+                item.tags && Array.isArray(item.tags) && item.tags.length > 0
+                  ? `
                 <div class="item-tags">
-                  ${item.tags.map(tag => `<span class="item-tag">${escapeHtml(tag)}</span>`).join("")}
+                  ${item.tags
+                    .map(
+                      (tag) =>
+                        `<span class="item-tag">${escapeHtml(tag)}</span>`
+                    )
+                    .join("")}
                 </div>
-              ` : ""}
+              `
+                  : ""
+              }
             </div>
-            <div class="item-price">$${(parseFloat(item.price) || 0).toFixed(2)}</div>
+            <div class="item-price">$${(parseFloat(item.price) || 0).toFixed(
+              2
+            )}</div>
           </div>
-          ${item.description ? `<div class="item-description">${escapeHtml(item.description)}</div>` : ""}
+          ${
+            item.description
+              ? `<div class="item-description">${escapeHtml(
+                  item.description
+                )}</div>`
+              : ""
+          }
           <div class="item-id">ID: ${item.id || ""}</div>
         </div>
-      `).join("")}
+      `
+        )
+        .join("")}
     </div>
-  `).join("")}
+  `
+    )
+    .join("")}
   
   <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #eee; text-align: center; color: #999; font-size: 12px;">
     <p>Total Items: ${items.length}</p>
@@ -2715,10 +3050,10 @@ function printMenu() {
 </body>
 </html>
     `;
-    
+
     printWindow.document.write(printHTML);
     printWindow.document.close();
-    
+
     // Wait for content to load, then print
     printWindow.onload = () => {
       setTimeout(() => {
@@ -2743,7 +3078,7 @@ function printMenu() {
  */
 function initNavigation() {
   if (elements.navItems) {
-    elements.navItems.forEach(item => {
+    elements.navItems.forEach((item) => {
       if (item.dataset.section === "menu") {
         addEventListener(item, "click", (e) => {
           e.preventDefault();
@@ -2789,7 +3124,11 @@ function initNavigation() {
   }
 
   addEventListener(document, "keydown", (e) => {
-    if (e.key === "Escape" && elements.itemModal && elements.itemModal.classList.contains("show")) {
+    if (
+      e.key === "Escape" &&
+      elements.itemModal &&
+      elements.itemModal.classList.contains("show")
+    ) {
       resetForm();
       hideItemModal();
     }
@@ -2805,7 +3144,10 @@ function initNavigation() {
   if (elements.refreshBtn) {
     addEventListener(elements.refreshBtn, "click", async () => {
       await loadMenuItems();
-      if (elements.statsSection && elements.statsSection.style.display !== "none") {
+      if (
+        elements.statsSection &&
+        elements.statsSection.style.display !== "none"
+      ) {
         renderStatistics();
       }
     });
@@ -2855,7 +3197,11 @@ function initNavigation() {
   }
 
   addEventListener(document, "keydown", (e) => {
-    if (e.key === "Escape" && elements.importModal && elements.importModal.classList.contains("show")) {
+    if (
+      e.key === "Escape" &&
+      elements.importModal &&
+      elements.importModal.classList.contains("show")
+    ) {
       hideImportModal();
     }
   });
@@ -2863,7 +3209,7 @@ function initNavigation() {
   // Sidebar toggle functionality
   if (elements.sidebarToggle && elements.sidebar) {
     const mainContent = document.querySelector(".main-content");
-    
+
     const updateMainContentMargin = () => {
       if (mainContent) {
         if (elements.sidebar.classList.contains("collapsed")) {
@@ -2894,12 +3240,12 @@ function initNavigation() {
 function initialize() {
   try {
     initializeElements();
-    
+
     if (!elements.loginForm) {
       setTimeout(initialize, 100);
       return;
     }
-    
+
     initAuth();
     initItemForm();
     initFilterAndSort();
@@ -2908,6 +3254,7 @@ function initialize() {
     initNavigation();
     initThemeToggle();
     initPrintMenu();
+    initLayoutToggle();
     checkAuth();
   } catch (error) {
     if (IS_DEVELOPMENT) {
@@ -2927,7 +3274,11 @@ if (typeof document !== "undefined") {
 }
 
 // Cleanup on page unload (only if window is available)
-if (typeof window !== "undefined" && window && typeof window.addEventListener === "function") {
+if (
+  typeof window !== "undefined" &&
+  window &&
+  typeof window.addEventListener === "function"
+) {
   try {
     const beforeUnloadHandler = () => {
       try {
@@ -2946,4 +3297,3 @@ if (typeof window !== "undefined" && window && typeof window.addEventListener ==
     }
   }
 }
-
