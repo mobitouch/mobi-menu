@@ -1,0 +1,54 @@
+{
+  "primaryColor": "#000000",
+  "secondaryColor": "#206ccf",
+  "textColor": "#fefefe",
+  "accentColor": "#444afd",
+  "headingFontSize": 4,
+  "itemNameSize": 1.8,
+  "descriptionSize": 0.95,
+  "priceSize": 1.5,
+  "cardOpacity": 0.05,
+  "gridGap": 1,
+  "filterCategories": [
+    {
+      "category": "lorem ipsum",
+      "label": "Lorem Ipsum",
+      "enabled": true
+    },
+    {
+      "category": "starters",
+      "label": "Starters",
+      "enabled": true
+    },
+    {
+      "category": "chicken burgers",
+      "label": "Chicken Burgers",
+      "enabled": true
+    },
+    {
+      "category": "fries",
+      "label": "Fries",
+      "enabled": true
+    },
+    {
+      "category": "dessert",
+      "label": "Dessert",
+      "enabled": true
+    },
+    {
+      "category": "drinks",
+      "label": "Drinks",
+      "enabled": true
+    },
+    {
+      "category": "add ons",
+      "label": "Add Ons",
+      "enabled": true
+    },
+    {
+      "category": "dips",
+      "label": "Dips",
+      "enabled": true
+    }
+  ]
+}

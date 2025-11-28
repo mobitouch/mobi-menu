@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lorem Ipsum</title>
+    <link rel="preload" href="data.json" as="fetch" crossorigin />
+    <link rel="preload" href="/api/settings" as="fetch" crossorigin />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@300;400;700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@300;400;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+  </head>
+  <body class="loading">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+      <div class="loading-content">
+        <div class="burger-loader">
+          <div class="burger-bun top"></div>
+          <div class="burger-patty"></div>
+          <div class="burger-cheese"></div>
+          <div class="burger-patty"></div>
+          <div class="burger-bun bottom"></div>
+        </div>
+        <p class="loading-text">Preparing your menu...</p>
+      </div>
+    </div>
+
+    <header>
+      <div class="logo-container">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='100'%3E%3Crect width='200' height='100' fill='%230d3b2e'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23ffffff' font-family='Arial' font-size='20'%3ELogo%3C/text%3E%3C/svg%3E" alt="Placeholder Logo" class="logo" loading="lazy" />
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Lorem Ipsum Dolor Sit Amet</h1>
+        <p>Consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.</p>
+      </section>
+
+      <section class="menu-section">
+        <div class="filters" id="filters">
+          <!-- Filter buttons will be injected here by JS -->
+        </div>
+
+        <div class="menu-controls">
+          <button id="open-sort-modal" class="sort-modal-btn">
+            <span>Sort Options</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M7 12h10M11 18h2"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="menu-grid" id="menu-grid">
+          <!-- Menu items will be injected here by JS -->
+        </div>
+      </section>
+
+    <!-- Sort Modal -->
+    <div id="sort-modal" class="sort-modal">
+      <div class="sort-modal-content">
+        <div class="sort-modal-header">
+          <h3>Sort Menu Items</h3>
+          <button class="sort-modal-close" id="close-sort-modal">&times;</button>
+        </div>
+        <div class="sort-modal-body">
+          <div class="sort-options">
+            <button class="sort-option-btn active" data-sort="default">
+              <span>Default</span>
+              <span class="sort-check">✓</span>
+            </button>
+            <button class="sort-option-btn" data-sort="name-asc">
+              <span>Name (A-Z)</span>
+              <span class="sort-check">✓</span>
+            </button>
+            <button class="sort-option-btn" data-sort="name-desc">
+              <span>Name (Z-A)</span>
+              <span class="sort-check">✓</span>
+            </button>
+            <button class="sort-option-btn" data-sort="price-asc">
+              <span>Price (Low to High)</span>
+              <span class="sort-check">✓</span>
+            </button>
+            <button class="sort-option-btn" data-sort="price-desc">
+              <span>Price (High to Low)</span>
+              <span class="sort-check">✓</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </main>
+
+    <footer>
+      <p>&copy; 2025 Lorem Ipsum. All rights reserved.</p>
+    </footer>
+
+    <!-- Scroll to Top Button -->
+    <button id="scroll-to-top" class="scroll-to-top" aria-label="Scroll to top">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 15l-6-6-6 6"/>
+      </svg>
+    </button>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>
+

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel - Lorem Ipsum</title>
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+
+  <body>
+    <!-- Login Screen -->
+    <div id="login-view" class="view">
+      <div class="login-container">
+        <div class="login-box">
+          <h1>Lorem Ipsum Admin</h1>
+          <form id="login-form">
+            <input
+              type="password"
+              id="password-input"
+              placeholder="Enter password"
+              required
+            />
+            <button type="submit">Login</button>
+          </form>
+          <p id="login-error" class="error" style="display: none"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="dashboard-view" class="view" style="display: none">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo-container">
+            <h2 class="logo-text">LOREM IPSUM</h2>
+            <span class="logo-subtitle">ADMIN PANEL</span>
+          </div>
+        </div>
+        
+        <nav class="sidebar-nav">
+          <a href="#" class="nav-item active" data-section="menu">
+            <svg class="nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span class="nav-text">Menu Items</span>
+          </a>
+          <a href="#" class="nav-item" data-section="settings">
+            <svg class="nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M13.5 8.5c0 .3-.1.6-.2.9l1.4 1.1c.2.2.3.5.1.7l-1.3 2.3c-.2.3-.5.4-.8.3l-1.6-.6c-.3.2-.7.4-1 .5l-.2 1.7c0 .4-.3.7-.7.7H7.8c-.4 0-.7-.3-.7-.7l-.2-1.7c-.3-.1-.6-.3-1-.5l-1.6.6c-.3.1-.6 0-.8-.3L2.2 11.2c-.2-.2-.1-.5.1-.7l1.4-1.1c-.1-.3-.2-.6-.2-.9s.1-.6.2-.9L2.3 7.5c-.2-.2-.3-.5-.1-.7l1.3-2.3c.2-.3.5-.4.8-.3l1.6.6c.3-.2.7-.4 1-.5l.2-1.7c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7l.2 1.7c.3.1.6.3 1 .5l1.6-.6c.3-.1.6 0 .8.3l1.3 2.3c.2.2.1.5-.1.7l-1.4 1.1c.1.3.2.6.2.9z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+            <span class="nav-text">Settings</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <a href="#" id="logout-btn" class="nav-item logout-nav">
+            <svg class="nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 14H3a1 1 0 01-1-1V3a1 1 0 011-1h3M10 11l4-4-4-4M14 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="nav-text">Logout</span>
+          </a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-header">
+          <div class="header-left">
+            <h1 class="page-title" id="page-title">Menu Items</h1>
+            <button class="refresh-btn" id="refresh-btn" title="Refresh">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 2v4h4M8 14v-4H4M2 8a6 6 0 0110-4.24M14 8a6 6 0 01-10 4.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="header-right">
+            <div class="user-info">
+              <span class="username">Admin</span>
+            </div>
+          </div>
+        </header>
+
+        <div id="success-message" class="success" style="display: none"></div>
+
+        <!-- Menu Items Section -->
+        <section id="menu-section" class="content-section">
+          <div class="section-header">
+            <div class="section-title-bar">
+              <h2>Menu Items (<span id="item-count">0</span>)</h2>
+              <div class="section-actions">
+                <button class="btn-icon" id="add-item-btn" title="Add New Item">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  Add Item
+                </button>
+              </div>
+            </div>
+            
+            <div class="controls-bar">
+              <div class="search-container">
+                <input 
+                  type="text" 
+                  id="item-filter" 
+                  placeholder="Search by name, category, or description..." 
+                  class="search-input"
+                />
+              </div>
+              <div class="sort-container">
+                <label class="sort-label">Sort by:</label>
+                <div class="sort-buttons">
+                  <button class="sort-btn" data-sort="default">Default</button>
+                  <button class="sort-btn" data-sort="name-asc">Name (A-Z)</button>
+                  <button class="sort-btn" data-sort="name-desc">Name (Z-A)</button>
+                  <button class="sort-btn" data-sort="price-asc">Price (Low-High)</button>
+                  <button class="sort-btn" data-sort="price-desc">Price (High-Low)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="items-grid" id="items-list">
+            <!-- Items will be injected here by JS -->
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- Add/Edit Item Modal -->
+    <div id="item-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <h2 id="form-title">Add New Item</h2>
+          </div>
+          <button class="modal-close" id="close-item-modal">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 4l-8 8M4 4l8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="item-form" class="item-form">
+            <input type="hidden" id="item-id" />
+
+            <div class="form-group">
+              <label>Item Name</label>
+              <input type="text" id="item-name" required placeholder="Enter item name" />
+            </div>
+
+            <div class="form-group">
+              <label>Category</label>
+              <select id="item-category" required>
+                <option value="starters">Starters</option>
+                <option value="lorem ipsum">Lorem Ipsum</option>
+                <option value="chicken burgers">Chicken Burgers</option>
+                <option value="fries">Fries</option>
+                <option value="dessert">Dessert</option>
+                <option value="drinks">Drinks</option>
+                <option value="add ons">Add Ons</option>
+                <option value="dips">Dips</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Price ($)</label>
+              <input type="number" id="item-price" step="0.5" required placeholder="0.00" />
+            </div>
+
+            <div class="form-group">
+              <label>Description</label>
+              <textarea id="item-description" rows="4" placeholder="Enter item description (optional)"></textarea>
+            </div>
+
+            <div class="modal-actions">
+              <button
+                type="button"
+                class="btn-secondary"
+                id="cancel-btn"
+              >
+                Cancel
+              </button>
+              <button type="submit" class="btn-primary" id="submit-btn">
+                <span id="submit-btn-text">Add Item</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Panel (Right Side) -->
+    <aside id="settings-panel" class="settings-panel">
+      <div class="settings-panel-header">
+        <div class="settings-panel-header-left">
+          <h2>Menu UI Settings</h2>
+        </div>
+        <button class="settings-panel-close" id="close-settings-panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 4l-8 8M4 4l8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-panel-body">
+        <form id="settings-form">
+          <div class="settings-section">
+            <h3>Colors</h3>
+            <div class="form-group">
+              <label>Primary Color (Background)</label>
+              <input type="color" id="primary-color" value="#0d3b2e" />
+              <input type="text" id="primary-color-text" value="#0d3b2e" class="color-text-input" />
+            </div>
+            <div class="form-group">
+              <label>Secondary Color (Accents)</label>
+              <input type="color" id="secondary-color" value="#1a5c4a" />
+              <input type="text" id="secondary-color-text" value="#1a5c4a" class="color-text-input" />
+            </div>
+            <div class="form-group">
+              <label>Text Color</label>
+              <input type="color" id="text-color" value="#ffffff" />
+              <input type="text" id="text-color-text" value="#ffffff" class="color-text-input" />
+            </div>
+            <div class="form-group">
+              <label>Accent Color (Price/Gold)</label>
+              <input type="color" id="accent-color" value="#ffd700" />
+              <input type="text" id="accent-color-text" value="#ffd700" class="color-text-input" />
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Typography</h3>
+            <div class="form-group">
+              <label>Heading Font Size (rem)</label>
+              <input type="number" id="heading-font-size" value="4" step="0.1" min="2" max="8" />
+            </div>
+            <div class="form-group">
+              <label>Item Name Font Size (rem)</label>
+              <input type="number" id="item-name-size" value="1.8" step="0.1" min="1" max="3" />
+            </div>
+            <div class="form-group">
+              <label>Description Font Size (rem)</label>
+              <input type="number" id="description-size" value="0.95" step="0.05" min="0.7" max="1.5" />
+            </div>
+            <div class="form-group">
+              <label>Price Font Size (rem)</label>
+              <input type="number" id="price-size" value="1.5" step="0.1" min="1" max="3" />
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Layout</h3>
+            <div class="form-group">
+              <label>Card Background Opacity (0-1)</label>
+              <input type="number" id="card-opacity" value="0.05" step="0.01" min="0" max="1" />
+            </div>
+            <div class="form-group">
+              <label>Menu Grid Gap (rem)</label>
+              <input type="number" id="grid-gap" value="2" step="0.5" min="1" max="5" />
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Menu Filters</h3>
+            <p class="settings-description">Manage which categories appear as filter buttons on the public menu. Drag to reorder.</p>
+            <div id="filters-list" class="filters-list">
+              <!-- Filter items will be injected here -->
+            </div>
+            <button type="button" class="btn-add-filter" id="add-filter-btn">+ Add Filter Category</button>
+          </div>
+
+          <div class="settings-panel-actions">
+            <button type="button" class="btn-secondary" id="reset-settings-btn">Reset to Default</button>
+            <button type="submit" class="btn-primary">Save Settings</button>
+          </div>
+        </form>
+      </div>
+    </aside>
+
+    <!-- Settings Overlay -->
+    <div id="settings-overlay" class="settings-overlay"></div>
+
+    <script src="admin.js"></script>
+  </body>
+</html>
+
