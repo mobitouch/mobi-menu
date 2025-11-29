@@ -20,11 +20,11 @@ const state = {
   uiSettings: null,
   isAuthenticated: false,
   selectedItems: new Set(),
-  theme: "dark", // 'dark' or 'light'
-  layout: "grid", // 'grid' or 'list'
-  newCategories: new Set(), // Track newly created categories that haven't been saved yet
-  initialFormState: null, // Store initial form state for change detection
-  csrfToken: null, // CSRF token for state-changing operations
+  theme: "dark",
+  layout: "grid",
+  newCategories: new Set(),
+  initialFormState: null,
+  csrfToken: null,
 };
 
 // ============================================================================
@@ -98,6 +98,10 @@ const elements = {
   confirmModalCancel: null,
   clearSearchBtn: null,
   themeToggleBtn: null,
+  sortPopupBtn: null,
+  sortModal: null,
+  closeSortModal: null,
+  sortPopupLabel: null,
   printMenuBtn: null,
   categoryModal: null,
   categoryModalTitle: null,
@@ -195,6 +199,10 @@ function initializeElements() {
     );
     elements.clearSearchBtn = document.getElementById("clear-search-btn");
     elements.themeToggleBtn = document.getElementById("theme-toggle-btn");
+    elements.sortPopupBtn = document.getElementById("sort-popup-btn");
+    elements.sortModal = document.getElementById("sort-modal");
+    elements.closeSortModal = document.getElementById("close-sort-modal");
+    elements.sortPopupLabel = document.getElementById("sort-popup-label");
     elements.printMenuBtn = document.getElementById("print-menu-btn");
     elements.layoutToggleBtn = document.getElementById("layout-toggle-btn");
     elements.categoryModal = document.getElementById("category-modal");
@@ -820,13 +828,63 @@ async function checkAuth() {
   }
 }
 
+/**
+ * Update sort popup label based on current sort
+ */
+function updateSortPopupLabel() {
+  if (!elements.sortPopupLabel) return;
+
+  const sortLabels = {
+    default: "Default",
+    "id-asc": "ID (Low to High)",
+    "id-desc": "ID (High to Low)",
+    "name-asc": "Name (A to Z)",
+    "name-desc": "Name (Z to A)",
+    "price-asc": "Price (Low to High)",
+    "price-desc": "Price (High to Low)",
+  };
+
+  const label = sortLabels[state.currentSort] || "Default";
+  elements.sortPopupLabel.textContent = `Sort by: ${label}`;
+}
+
+/**
+ * Update sort popup selection indicators
+ */
+function updateSortPopupSelection() {
+  const sortOptions = document.querySelectorAll(".sort-popup-option");
+  sortOptions.forEach((option) => {
+    const sortType = option.getAttribute("data-sort") || "default";
+    const checkIcon = option.querySelector(".sort-check-icon");
+    if (sortType === state.currentSort) {
+      option.classList.add("active");
+      if (checkIcon) checkIcon.style.display = "block";
+    } else {
+      option.classList.remove("active");
+      if (checkIcon) checkIcon.style.display = "none";
+    }
+  });
+}
+
 function initializeSortButtons() {
-  const defaultSortBtn = document.querySelector(
-    '.sort-btn[data-sort="default"]'
-  );
-  if (defaultSortBtn && !document.querySelector(".sort-btn.active")) {
-    defaultSortBtn.classList.add("active");
-  }
+  updateSortPopupLabel();
+  updateSortPopupSelection();
+  updateSortButtons();
+}
+
+/**
+ * Update desktop sort buttons active state
+ */
+function updateSortButtons() {
+  const desktopSortButtons = document.querySelectorAll(".sort-btn");
+  desktopSortButtons.forEach((btn) => {
+    const sortType = btn.getAttribute("data-sort") || "default";
+    if (sortType === state.currentSort) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
 }
 
 function resetFilter() {
@@ -1262,10 +1320,15 @@ function renderMenuItems() {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.className = "item-card-checkbox";
+    checkbox.id = `item-checkbox-${id}`;
     checkbox.checked = isSelected;
     checkbox.addEventListener("change", () =>
       toggleItemSelection(id, checkbox.checked)
     );
+
+    const checkboxLabel = document.createElement("label");
+    checkboxLabel.htmlFor = `item-checkbox-${id}`;
+    checkboxLabel.setAttribute("aria-label", `Select item ${name}`);
 
     const itemInfo = document.createElement("div");
     itemInfo.className = "item-info";
@@ -1357,6 +1420,7 @@ function renderMenuItems() {
     actions.appendChild(deleteBtn);
 
     card.appendChild(checkbox);
+    card.appendChild(checkboxLabel);
     card.appendChild(itemInfo);
     card.appendChild(actions);
     fragment.appendChild(card);
@@ -2452,37 +2516,69 @@ function initFilterAndSort() {
     }
   }
 
-  // Use event delegation for sort buttons (more efficient)
-  const sortContainer =
-    document.querySelector(".sort-buttons") ||
-    document.querySelector(".menu-controls");
-  if (sortContainer) {
-    addEventListener(sortContainer, "click", (e) => {
-      const btn = e.target.closest(".sort-btn");
-      if (!btn) return;
-
-      // Update active state efficiently
-      const allSortBtns = sortContainer.querySelectorAll(".sort-btn");
-      for (let i = 0; i < allSortBtns.length; i++) {
-        allSortBtns[i].classList.remove("active");
+  // Sort popup functionality (mobile/tablet only)
+  if (elements.sortPopupBtn) {
+    addEventListener(elements.sortPopupBtn, "click", () => {
+      // On mobile/tablet, open modal
+      if (elements.sortModal) {
+        elements.sortModal.classList.add("show");
+        updateSortPopupSelection();
       }
-      btn.classList.add("active");
-
-      state.currentSort = btn.getAttribute("data-sort") || "default";
-      renderMenuItems();
-    });
-  } else {
-    document.querySelectorAll(".sort-btn").forEach((btn) => {
-      addEventListener(btn, "click", () => {
-        document
-          .querySelectorAll(".sort-btn")
-          .forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        state.currentSort = btn.getAttribute("data-sort") || "default";
-        renderMenuItems();
-      });
     });
   }
+
+  // Desktop sort buttons
+  const desktopSortButtons = document.querySelectorAll(".sort-btn");
+  desktopSortButtons.forEach((btn) => {
+    addEventListener(btn, "click", () => {
+      const sortType = btn.getAttribute("data-sort") || "default";
+      state.currentSort = sortType;
+      updateSortButtons();
+      updateSortPopupSelection(); // Also update modal selection
+      renderMenuItems();
+    });
+  });
+
+  if (elements.closeSortModal) {
+    addEventListener(elements.closeSortModal, "click", () => {
+      if (elements.sortModal) {
+        elements.sortModal.classList.remove("show");
+      }
+    });
+  }
+
+  // Close sort modal when clicking outside or pressing Escape
+  if (elements.sortModal) {
+    addEventListener(elements.sortModal, "click", (e) => {
+      if (e.target === elements.sortModal) {
+        elements.sortModal.classList.remove("show");
+      }
+    });
+
+    // Close on Escape key
+    addEventListener(document, "keydown", (e) => {
+      if (e.key === "Escape" && elements.sortModal.classList.contains("show")) {
+        elements.sortModal.classList.remove("show");
+      }
+    });
+  }
+
+  // Handle sort option selection in modal (mobile/tablet)
+  const sortOptions = document.querySelectorAll(".sort-popup-option");
+  sortOptions.forEach((option) => {
+    addEventListener(option, "click", () => {
+      const sortType = option.getAttribute("data-sort") || "default";
+      state.currentSort = sortType;
+      updateSortPopupLabel();
+      updateSortPopupSelection();
+      updateSortButtons(); // Also update desktop buttons
+      renderMenuItems();
+      // Close modal if open
+      if (elements.sortModal) {
+        elements.sortModal.classList.remove("show");
+      }
+    });
+  });
 }
 
 // ============================================================================

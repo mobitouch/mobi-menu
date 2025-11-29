@@ -44,7 +44,6 @@ app.use(
   })
 );
 
-// Validate SESSION_SECRET in production
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (process.env.NODE_ENV === "production" && !SESSION_SECRET) {
   console.error("⚠️  ERROR: SESSION_SECRET is required in production!");
@@ -59,14 +58,13 @@ app.use(
       "lorem-ipsum-secret-key-2025-change-in-production",
     resave: false,
     saveUninitialized: false,
-    name: "sessionId", // Don't use default session name
+    name: "sessionId",
     cookie: {
       secure: process.env.NODE_ENV === "production",
-      httpOnly: true, // Prevent XSS attacks
-      sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax", // CSRF protection
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+      maxAge: 24 * 60 * 60 * 1000,
     },
-    // Regenerate session ID on login to prevent session fixation
     rolling: true,
   })
 );
@@ -187,21 +185,18 @@ async function readMenuData() {
 
     cache.menuData = parsed;
     cache.menuDataTimestamp = now;
-    // Update max ID cache
     cache.maxId = getMaxId(parsed);
     cache.maxIdTimestamp = now;
 
     return parsed;
   } catch (error) {
     if (error.code === "ENOENT") {
-      // File doesn't exist, return empty array and create file
       await writeMenuData([]);
       return [];
     }
     if (process.env.NODE_ENV !== "production") {
       console.error("Error reading menu data:", error);
     }
-    // Return cached data if available, otherwise empty array
     return cache.menuData || [];
   }
 }
@@ -289,11 +284,10 @@ async function writeMenuData(data) {
       try {
         await fs.unlink(`${DATA_FILE}.tmp`);
       } catch (unlinkError) {
-        // Ignore cleanup errors
+        // Silent cleanup failure
       }
       releaseLock("menuData");
-      
-      // If it's a locking issue, retry; otherwise fail
+
       if (attempt < maxRetries - 1) {
         await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
         continue;
@@ -444,11 +438,9 @@ function errorHandler(err, req, res, next) {
     timestamp: new Date().toISOString(),
   };
 
-  // Only log full details in development
   if (process.env.NODE_ENV !== "production") {
     console.error("Error Details:", errorInfo);
   } else {
-    // In production, log minimal info
     console.error(`Error [${errorInfo.method} ${errorInfo.url}]: ${errorInfo.message}`);
   }
 
