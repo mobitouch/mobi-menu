@@ -5,11 +5,6 @@
  */
 
 // ============================================================================
-// CONFIGURATION
-// ============================================================================
-
-
-// ============================================================================
 // STATE MANAGEMENT
 // ============================================================================
 
@@ -29,6 +24,7 @@ const state = {
   layout: "grid", // 'grid' or 'list'
   newCategories: new Set(), // Track newly created categories that haven't been saved yet
   initialFormState: null, // Store initial form state for change detection
+  csrfToken: null, // CSRF token for state-changing operations
 };
 
 // ============================================================================
@@ -76,6 +72,8 @@ const elements = {
   submitBtnText: null,
   sidebar: null,
   sidebarToggle: null,
+  mobileMenuBtn: null,
+  sidebarOverlay: null,
   statsSection: null,
   categoriesSection: null,
   categoriesList: null,
@@ -165,6 +163,8 @@ function initializeElements() {
     elements.submitBtnText = document.getElementById("submit-btn-text");
     elements.sidebar = document.getElementById("sidebar");
     elements.sidebarToggle = document.getElementById("sidebar-toggle");
+    elements.mobileMenuBtn = document.getElementById("mobile-menu-btn");
+    elements.sidebarOverlay = document.getElementById("sidebar-overlay");
     elements.statsSection = document.getElementById("stats-section");
     elements.categoriesSection = document.getElementById("categories-section");
     elements.categoriesList = document.getElementById("categories-list");
@@ -642,8 +642,17 @@ async function showItemModal() {
     // Ensure settings are loaded before populating dropdown (Categories tab is source of truth)
     if (!state.uiSettings) {
       await loadSettings();
+    } else {
+      await refreshSettings();
     }
-    populateCategoryDropdown(); // Ensure categories are up to date from Categories tab
+    
+    // Preserve current category selection if editing
+    const currentCategory = state.editingItemId && elements.itemCategory 
+      ? elements.itemCategory.value 
+      : null;
+    
+    populateCategoryDropdown(currentCategory); // Ensure categories are up to date from Categories tab
+    
     // Set default category to "starters" when opening modal for new items (not editing)
     if (!state.editingItemId && elements.itemCategory) {
       // Find "Starters" (capitalized) option - case-insensitive search
@@ -792,6 +801,10 @@ async function checkAuth() {
 
     if (data.isAuthenticated) {
       state.isAuthenticated = true;
+      // Store CSRF token if provided
+      if (data.csrfToken) {
+        state.csrfToken = data.csrfToken;
+      }
       showDashboard();
       // Load settings first to get filterCategories (persisted categories)
       await loadSettings();
@@ -954,6 +967,75 @@ function initAuth() {
 // ============================================================================
 
 /**
+ * Get CSRF token from response headers or state
+ * @param {Response} response - Fetch response object
+ */
+function updateCSRFToken(response) {
+  const token = response.headers.get("X-CSRF-Token");
+  if (token) {
+    state.csrfToken = token;
+  }
+}
+
+/**
+ * Get request headers with CSRF token
+ * @returns {Object} Headers object
+ */
+function getRequestHeaders() {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  if (state.csrfToken) {
+    headers["X-CSRF-Token"] = state.csrfToken;
+  }
+  return headers;
+}
+
+/**
+ * Refresh settings from server (helper function)
+ * @returns {Promise<boolean>} True if successful, false otherwise
+ */
+async function refreshSettings() {
+  try {
+    const response = await fetch("/api/settings", {
+      cache: "no-store",
+    });
+    if (response.ok) {
+      updateCSRFToken(response);
+      state.uiSettings = await response.json();
+      if (!Array.isArray(state.uiSettings.filterCategories)) {
+        state.uiSettings.filterCategories = [];
+      }
+      return true;
+    }
+  } catch (error) {
+    // Silently use cached settings on error
+  }
+  return false;
+}
+
+/**
+ * Refresh menu items from server (helper function)
+ * @returns {Promise<boolean>} True if successful, false otherwise
+ */
+async function refreshMenuItems() {
+  try {
+    const response = await fetch("/api/menu", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (response.ok) {
+      updateCSRFToken(response);
+      state.menuItems = await response.json();
+      return true;
+    }
+  } catch (error) {
+    // Silently use cached menu items on error
+  }
+  return false;
+}
+
+/**
  * Load menu items from server
  * @returns {Promise<void>}
  */
@@ -970,6 +1052,7 @@ async function loadMenuItems() {
       throw new Error(`HTTP ${response.status}: Failed to load menu items`);
     }
 
+    updateCSRFToken(response);
     state.menuItems = await response.json();
     // Clear newCategories since categories from saved items will be in getAvailableCategories()
     state.newCategories.clear();
@@ -1453,6 +1536,30 @@ function initItemForm() {
   
   // Populate category dropdown
   populateCategoryDropdown();
+  
+  // Add listener to category dropdown to refresh dynamically when it changes
+  // This ensures the dropdown stays in sync if categories are updated elsewhere
+  if (elements.itemCategory) {
+    // Store a flag to prevent infinite loops
+    let isRefreshing = false;
+    
+    addEventListener(elements.itemCategory, "focus", async () => {
+      // Refresh categories when dropdown is focused (user is about to select)
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          await Promise.all([refreshSettings(), refreshMenuItems()]);
+          // Preserve current selection when refreshing
+          const currentValue = elements.itemCategory.value;
+          populateCategoryDropdown(currentValue);
+        } catch (error) {
+          // Silently use cached categories on error
+        } finally {
+          isRefreshing = false;
+        }
+      }
+    });
+  }
 
   addEventListener(elements.itemForm, "submit", async (e) => {
     e.preventDefault();
@@ -1516,9 +1623,17 @@ function initItemForm() {
 
       response = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(itemData),
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+          ...itemData,
+          _csrf: state.csrfToken, // Include CSRF token in body as fallback
+        }),
       });
+      
+      // Update CSRF token from response headers
+      if (response.ok) {
+        updateCSRFToken(response);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -1532,8 +1647,13 @@ function initItemForm() {
         state.newCategories.clear();
         // Clear initial form state so no confirmation is shown
         state.initialFormState = null;
-        await loadMenuItems();
-        populateCategoryDropdown(); // Update category dropdown
+        
+        // Refresh all data dynamically
+        await loadMenuItems(); // Refresh menu items
+        await refreshSettings(); // Refresh settings to get latest categories
+        populateCategoryDropdown(); // Update category dropdown with latest data
+        renderStatistics(); // Refresh statistics to reflect category changes
+        
         resetForm();
         hideItemModal();
       } else {
@@ -1553,7 +1673,7 @@ function initItemForm() {
  * Edit menu item
  * @param {number} id - Item ID
  */
-window.editItem = function (id) {
+window.editItem = async function (id) {
   const item = state.menuItems.find((i) => i.id === id);
   if (!item) {
     showMessage("Item not found", "error");
@@ -1562,11 +1682,27 @@ window.editItem = function (id) {
 
   state.editingItemId = id;
 
+  // Dynamically refresh settings and categories before opening modal
+  // This ensures the dropdown always has the latest categories
+  if (!state.uiSettings) {
+    await loadSettings();
+  } else {
+    await refreshSettings();
+  }
+
+  // Refresh menu items to ensure we have the latest data
+  await refreshMenuItems();
+
+  // Populate category dropdown with latest data, preserving the item's current category
+  const itemCategory = item.category ? item.category.trim() : "";
+  populateCategoryDropdown(itemCategory);
+
+  // Now set form values
   if (elements.itemId) elements.itemId.value = item.id || "";
   if (elements.itemName) elements.itemName.value = item.name || "";
-  if (elements.itemCategory && item.category) {
+  if (elements.itemCategory && itemCategory) {
     // Find matching option case-insensitively
-    const categoryLower = item.category.toLowerCase();
+    const categoryLower = itemCategory.toLowerCase();
     const matchingOption = Array.from(elements.itemCategory.options).find(
       opt => opt.value.toLowerCase() === categoryLower
     );
@@ -1574,7 +1710,7 @@ window.editItem = function (id) {
       elements.itemCategory.value = matchingOption.value;
     } else {
       // If no match found, set directly (will be added if needed)
-      elements.itemCategory.value = item.category;
+      elements.itemCategory.value = itemCategory;
     }
   }
   if (elements.itemPrice) elements.itemPrice.value = item.price || 0;
@@ -1640,7 +1776,13 @@ window.deleteItem = async function (id) {
 
     const response = await fetch(`/api/menu/${itemId}`, {
       method: "DELETE",
+      headers: getRequestHeaders(),
+      body: JSON.stringify({ _csrf: state.csrfToken }),
     });
+    
+    if (response.ok) {
+      updateCSRFToken(response);
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -1696,9 +1838,16 @@ window.duplicateItem = async function (id) {
 
     const response = await fetch("/api/menu", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(duplicateData),
+      headers: getRequestHeaders(),
+      body: JSON.stringify({
+        ...duplicateData,
+        _csrf: state.csrfToken,
+      }),
     });
+    
+    if (response.ok) {
+      updateCSRFToken(response);
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -2171,12 +2320,17 @@ async function importMenuData() {
 
     const response = await fetch("/api/menu/import", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getRequestHeaders(),
       body: JSON.stringify({
         data: importedData,
         replace: replace,
+        _csrf: state.csrfToken,
       }),
     });
+    
+    if (response.ok) {
+      updateCSRFToken(response);
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -2402,9 +2556,14 @@ function getAvailableCategories() {
 /**
  * Populate category dropdown with available categories
  * Priority: filterCategories (from Categories tab) > menu items > default categories
+ * @param {string} preserveValue - Optional value to preserve after refresh
  */
-function populateCategoryDropdown() {
+function populateCategoryDropdown(preserveValue = null) {
   if (!elements.itemCategory) return;
+
+  // Store current selection if we need to preserve it
+  const currentValue = preserveValue !== null ? preserveValue : (elements.itemCategory.value || null);
+  const currentValueLower = currentValue ? currentValue.toLowerCase().trim() : null;
 
   // Map structure: key = lowercase category, value = { display: string, value: string }
   const allCategoriesMap = new Map();
@@ -2490,6 +2649,25 @@ function populateCategoryDropdown() {
     option.textContent = display; // Use the display label
     elements.itemCategory.appendChild(option);
   });
+  
+  // Restore previous selection if it still exists, otherwise set default
+  if (currentValueLower) {
+    // Try to find exact match first
+    const exactMatch = allCategories.find(c => c.value.toLowerCase() === currentValueLower);
+    if (exactMatch) {
+      elements.itemCategory.value = exactMatch.value;
+      return; // Successfully restored
+    }
+    
+    // Try case-insensitive match
+    const caseInsensitiveMatch = Array.from(elements.itemCategory.options).find(
+      opt => opt.value.toLowerCase() === currentValueLower
+    );
+    if (caseInsensitiveMatch) {
+      elements.itemCategory.value = caseInsensitiveMatch.value;
+      return; // Successfully restored
+    }
+  }
   
   // Set default to "starters" if it exists, otherwise set to first category
   const startersOption = allCategories.find(c => c.value.toLowerCase() === "starters");
@@ -2591,11 +2769,15 @@ async function addCategoryToFilters(category) {
       // Save settings to server
       const response = await fetch("/api/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state.uiSettings),
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+          ...state.uiSettings,
+          _csrf: state.csrfToken,
+        }),
       });
-
+      
       if (response.ok) {
+        updateCSRFToken(response);
         const responseData = await response.json();
         // Update state with the saved settings (server may have normalized values)
         if (responseData.settings) {
@@ -2805,8 +2987,11 @@ async function editCategory(index) {
       item.category = capitalized; // Update to new capitalized name
       return fetch(`/api/menu/${item.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+          ...item,
+          _csrf: state.csrfToken,
+        }),
       });
     });
     await Promise.all(updatePromises);
@@ -2815,11 +3000,15 @@ async function editCategory(index) {
   // Save settings to server
   const response = await fetch("/api/settings", {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state.uiSettings),
+    headers: getRequestHeaders(),
+    body: JSON.stringify({
+      ...state.uiSettings,
+      _csrf: state.csrfToken,
+    }),
   });
-
+  
   if (response.ok) {
+    updateCSRFToken(response);
     const responseData = await response.json();
     if (responseData.settings) {
       state.uiSettings = responseData.settings;
@@ -2876,11 +3065,15 @@ async function deleteCategory(index) {
   // Save to server
   const response = await fetch("/api/settings", {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state.uiSettings),
+    headers: getRequestHeaders(),
+    body: JSON.stringify({
+      ...state.uiSettings,
+      _csrf: state.csrfToken,
+    }),
   });
-
+  
   if (response.ok) {
+    updateCSRFToken(response);
     const responseData = await response.json();
     if (responseData.settings) {
       state.uiSettings = responseData.settings;
@@ -2977,9 +3170,11 @@ async function loadSettings() {
   try {
     const response = await fetch("/api/settings", {
       cache: "no-store",
+      headers: { Accept: "application/json" },
     });
     if (!response.ok) throw new Error("Failed to load settings");
 
+    updateCSRFToken(response);
     state.uiSettings = await response.json();
 
     // Ensure filterCategories is an array
@@ -3442,9 +3637,14 @@ function initSettingsPanel() {
       try {
         const response = await fetch("/api/settings", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(settings),
+          headers: getRequestHeaders(),
+          body: JSON.stringify({
+            ...settings,
+            _csrf: state.csrfToken,
+          }),
         });
+        
+        updateCSRFToken(response);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -4002,12 +4202,52 @@ function initNavigation() {
     }
   });
 
+  // Check if we're on mobile/tablet
+  const isMobileOrTablet = () => {
+    return window.innerWidth <= 968;
+  };
+
+  // Toggle sidebar on mobile/tablet
+  const toggleMobileSidebar = () => {
+    if (!elements.sidebar) return;
+    
+    const isOpen = elements.sidebar.classList.contains("open");
+    
+    if (isOpen) {
+      closeMobileSidebar();
+    } else {
+      openMobileSidebar();
+    }
+  };
+
+  // Open sidebar on mobile/tablet
+  const openMobileSidebar = () => {
+    if (!elements.sidebar) return;
+    elements.sidebar.classList.add("open");
+    if (elements.sidebarOverlay) {
+      elements.sidebarOverlay.classList.add("active");
+    }
+    // Prevent body scroll when sidebar is open
+    document.body.style.overflow = "hidden";
+  };
+
+  // Close sidebar on mobile/tablet
+  const closeMobileSidebar = () => {
+    if (!elements.sidebar) return;
+    elements.sidebar.classList.remove("open");
+    if (elements.sidebarOverlay) {
+      elements.sidebarOverlay.classList.remove("active");
+    }
+    // Restore body scroll
+    document.body.style.overflow = "";
+  };
+
   // Sidebar toggle functionality
-  if (elements.sidebarToggle && elements.sidebar) {
+  if (elements.sidebar) {
     const mainContent = document.querySelector(".main-content");
 
     const updateMainContentMargin = () => {
-      if (mainContent) {
+      if (mainContent && !isMobileOrTablet()) {
         if (elements.sidebar.classList.contains("collapsed")) {
           mainContent.style.marginLeft = "70px";
         } else {
@@ -4016,20 +4256,88 @@ function initNavigation() {
       }
     };
 
-    addEventListener(elements.sidebarToggle, "click", () => {
-      elements.sidebar.classList.toggle("collapsed");
-      updateMainContentMargin();
-      // Save state to localStorage
-      const isCollapsed = elements.sidebar.classList.contains("collapsed");
-      localStorage.setItem("sidebarCollapsed", isCollapsed);
+    // Desktop sidebar toggle (collapse/expand)
+    if (elements.sidebarToggle) {
+      addEventListener(elements.sidebarToggle, "click", () => {
+        if (!isMobileOrTablet()) {
+          elements.sidebar.classList.toggle("collapsed");
+          updateMainContentMargin();
+          // Save state to localStorage
+          const isCollapsed = elements.sidebar.classList.contains("collapsed");
+          localStorage.setItem("sidebarCollapsed", isCollapsed);
+        }
+      });
+    }
+
+    // Mobile menu button toggle
+    if (elements.mobileMenuBtn) {
+      addEventListener(elements.mobileMenuBtn, "click", (e) => {
+        e.stopPropagation();
+        toggleMobileSidebar();
+      });
+    }
+
+    // Close sidebar when clicking overlay
+    if (elements.sidebarOverlay) {
+      addEventListener(elements.sidebarOverlay, "click", () => {
+        closeMobileSidebar();
+      });
+    }
+
+    // Close sidebar when clicking a nav item on mobile
+    const navItems = document.querySelectorAll(".nav-item");
+    navItems.forEach((item) => {
+      addEventListener(item, "click", () => {
+        if (isMobileOrTablet()) {
+          // Small delay to allow navigation to happen first
+          setTimeout(() => {
+            closeMobileSidebar();
+          }, 100);
+        }
+      });
     });
 
-    // Restore sidebar state from localStorage
-    const savedState = localStorage.getItem("sidebarCollapsed");
-    if (savedState === "true") {
-      elements.sidebar.classList.add("collapsed");
-      updateMainContentMargin();
+    // Close sidebar on window resize if switching from mobile to desktop
+    let resizeTimer;
+    addEventListener(window, "resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (!isMobileOrTablet()) {
+          // On desktop, remove mobile open state
+          closeMobileSidebar();
+          // Restore collapsed state if saved
+          const savedState = localStorage.getItem("sidebarCollapsed");
+          if (savedState === "true" && !elements.sidebar.classList.contains("collapsed")) {
+            elements.sidebar.classList.add("collapsed");
+          }
+          updateMainContentMargin();
+        } else {
+          // On mobile, ensure sidebar is closed by default
+          if (!elements.sidebar.classList.contains("open")) {
+            closeMobileSidebar();
+          }
+        }
+      }, 250);
+    });
+
+    // Restore sidebar state from localStorage (desktop only)
+    if (!isMobileOrTablet()) {
+      const savedState = localStorage.getItem("sidebarCollapsed");
+      if (savedState === "true") {
+        elements.sidebar.classList.add("collapsed");
+        updateMainContentMargin();
+      }
+    } else {
+      // On mobile, ensure sidebar starts closed
+      closeMobileSidebar();
     }
+
+    // Close sidebar on Escape key
+    addEventListener(document, "keydown", (e) => {
+      if (e.key === "Escape" && isMobileOrTablet()) {
+        closeMobileSidebar();
+      }
+    });
   }
 }
 

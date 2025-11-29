@@ -49,16 +49,6 @@
       "category": "dips",
       "label": "Dips",
       "enabled": true
-    },
-    {
-      "category": "uncategorized",
-      "label": "Uncategorized",
-      "enabled": true
-    },
-    {
-      "category": "fish",
-      "label": "Fish",
-      "enabled": true
     }
   ]
 }

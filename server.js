@@ -15,6 +15,24 @@ const compression = require("compression");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy for accurate IP addresses (important for rate limiting)
+app.set("trust proxy", 1);
+
+// Security headers middleware
+app.use((req, res, next) => {
+  // Prevent XSS attacks
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  // Prevent MIME type sniffing and XSS
+  res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';");
+  // Referrer policy
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  // Permissions policy
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  next();
+});
+
 app.use(compression());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -26,17 +44,30 @@ app.use(
   })
 );
 
+// Validate SESSION_SECRET in production
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (process.env.NODE_ENV === "production" && !SESSION_SECRET) {
+  console.error("⚠️  ERROR: SESSION_SECRET is required in production!");
+  console.error("⚠️  Please set SESSION_SECRET in your .env file");
+  process.exit(1);
+}
+
 app.use(
   session({
     secret:
-      process.env.SESSION_SECRET ||
+      SESSION_SECRET ||
       "lorem-ipsum-secret-key-2025-change-in-production",
     resave: false,
     saveUninitialized: false,
+    name: "sessionId", // Don't use default session name
     cookie: {
       secure: process.env.NODE_ENV === "production",
-      maxAge: 24 * 60 * 60 * 1000,
+      httpOnly: true, // Prevent XSS attacks
+      sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax", // CSRF protection
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
     },
+    // Regenerate session ID on login to prevent session fixation
+    rolling: true,
   })
 );
 
@@ -48,6 +79,57 @@ if (!ADMIN_PASSWORD) {
     "⚠️  Please create a .env file with ADMIN_PASSWORD=your_password"
   );
   process.exit(1);
+}
+
+// CSRF token generation and validation
+const crypto = require("crypto");
+
+/**
+ * Generate CSRF token
+ * @returns {string} CSRF token
+ */
+function generateCSRFToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+/**
+ * Validate CSRF token
+ * @param {string} token - Token to validate
+ * @param {Object} session - Session object
+ * @returns {boolean} True if valid
+ */
+function validateCSRFToken(token, session) {
+  if (!token || !session.csrfToken) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(token),
+    Buffer.from(session.csrfToken)
+  );
+}
+
+/**
+ * CSRF protection middleware for state-changing operations
+ */
+function csrfProtection(req, res, next) {
+  // Skip CSRF for GET requests and public endpoints
+  if (req.method === "GET" || req.path.startsWith("/data.json") || req.path.startsWith("/api/settings") && req.method === "GET") {
+    return next();
+  }
+
+  // Generate token if not exists
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = generateCSRFToken();
+  }
+
+  // Check token for POST/PUT/DELETE requests
+  const token = req.headers["x-csrf-token"] || req.body._csrf;
+  if (!validateCSRFToken(token, req.session)) {
+    return res.status(403).json({
+      success: false,
+      error: "Invalid CSRF token",
+    });
+  }
+
+  next();
 }
 
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -97,7 +179,9 @@ async function readMenuData() {
     const parsed = JSON.parse(data);
 
     if (!Array.isArray(parsed)) {
-      console.error("Invalid menu data format, returning empty array");
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Invalid menu data format, returning empty array");
+      }
       return [];
     }
 
@@ -114,7 +198,9 @@ async function readMenuData() {
       await writeMenuData([]);
       return [];
     }
-    console.error("Error reading menu data:", error);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Error reading menu data:", error);
+    }
     // Return cached data if available, otherwise empty array
     return cache.menuData || [];
   }
@@ -136,37 +222,86 @@ function getMaxId(data) {
   return maxId;
 }
 
+// File operation lock to prevent race conditions
+const fileLocks = {
+  menuData: false,
+  settings: false,
+};
+
+/**
+ * Acquire file lock
+ * @param {string} fileType - Type of file ('menuData' or 'settings')
+ * @returns {Promise<boolean>} True if lock acquired, false if already locked
+ */
+async function acquireLock(fileType) {
+  if (fileLocks[fileType]) {
+    return false;
+  }
+  fileLocks[fileType] = true;
+  return true;
+}
+
+/**
+ * Release file lock
+ * @param {string} fileType - Type of file ('menuData' or 'settings')
+ */
+function releaseLock(fileType) {
+  fileLocks[fileType] = false;
+}
+
 /**
  * Write menu data to file and invalidate cache
  * @param {Array} data - Array of menu items to write
  * @returns {Promise<boolean>} Promise resolving to success status
  */
 async function writeMenuData(data) {
-  try {
-    if (!Array.isArray(data)) {
-      throw new Error("Menu data must be an array");
+  const maxRetries = 5;
+  const retryDelay = 100; // ms
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (!(await acquireLock("menuData"))) {
+      // Wait and retry if file is locked
+      await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+      continue;
     }
 
-    const tempFile = `${DATA_FILE}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(data, null, 2), "utf8");
-    await fs.rename(tempFile, DATA_FILE);
-
-    // Invalidate cache and update max ID
-    cache.menuData = null;
-    cache.menuDataTimestamp = 0;
-    cache.maxId = getMaxId(data);
-    cache.maxIdTimestamp = Date.now();
-
-    return true;
-  } catch (error) {
-    console.error("Error writing menu data:", error);
     try {
-      await fs.unlink(`${DATA_FILE}.tmp`);
-    } catch (unlinkError) {
-      // Ignore cleanup errors
+      if (!Array.isArray(data)) {
+        throw new Error("Menu data must be an array");
+      }
+
+      const tempFile = `${DATA_FILE}.tmp`;
+      await fs.writeFile(tempFile, JSON.stringify(data, null, 2), "utf8");
+      await fs.rename(tempFile, DATA_FILE);
+
+      // Invalidate cache and update max ID
+      cache.menuData = null;
+      cache.menuDataTimestamp = 0;
+      cache.maxId = getMaxId(data);
+      cache.maxIdTimestamp = Date.now();
+
+      releaseLock("menuData");
+      return true;
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Error writing menu data:", error);
+      }
+      try {
+        await fs.unlink(`${DATA_FILE}.tmp`);
+      } catch (unlinkError) {
+        // Ignore cleanup errors
+      }
+      releaseLock("menuData");
+      
+      // If it's a locking issue, retry; otherwise fail
+      if (attempt < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+        continue;
+      }
+      return false;
     }
-    return false;
   }
+  return false;
 }
 
 /**
@@ -224,7 +359,9 @@ async function readSettings() {
     cache.settingsTimestamp = now;
     return defaultSettings;
   } catch (error) {
-    console.error("Error reading settings:", error);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Error reading settings:", error);
+    }
     // Return cached settings if available, otherwise defaults
     return cache.settings || getDefaultSettings();
   }
@@ -236,28 +373,50 @@ async function readSettings() {
  * @returns {Promise<boolean>} Promise resolving to success status
  */
 async function writeSettings(data) {
-  try {
-    if (!data || typeof data !== "object") {
-      throw new Error("Settings must be an object");
+  const maxRetries = 5;
+  const retryDelay = 100; // ms
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (!(await acquireLock("settings"))) {
+      // Wait and retry if file is locked
+      await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+      continue;
     }
 
-    const tempFile = `${SETTINGS_FILE}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(data, null, 2), "utf8");
-    await fs.rename(tempFile, SETTINGS_FILE);
-
-    cache.settings = null;
-    cache.settingsTimestamp = 0;
-
-    return true;
-  } catch (error) {
-    console.error("Error writing settings:", error);
     try {
-      await fs.unlink(`${SETTINGS_FILE}.tmp`);
-    } catch (unlinkError) {
-      // Ignore cleanup errors
+      if (!data || typeof data !== "object") {
+        throw new Error("Settings must be an object");
+      }
+
+      const tempFile = `${SETTINGS_FILE}.tmp`;
+      await fs.writeFile(tempFile, JSON.stringify(data, null, 2), "utf8");
+      await fs.rename(tempFile, SETTINGS_FILE);
+
+      cache.settings = null;
+      cache.settingsTimestamp = 0;
+
+      releaseLock("settings");
+      return true;
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Error writing settings:", error);
+      }
+      try {
+        await fs.unlink(`${SETTINGS_FILE}.tmp`);
+      } catch (unlinkError) {
+        // Ignore cleanup errors
+      }
+      releaseLock("settings");
+      
+      // If it's a locking issue, retry; otherwise fail
+      if (attempt < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+        continue;
+      }
+      return false;
     }
-    return false;
   }
+  return false;
 }
 
 /**
@@ -267,8 +426,31 @@ async function writeSettings(data) {
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
+/**
+ * Centralized error handler middleware
+ * @param {Error} err - Error object
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
 function errorHandler(err, req, res, next) {
-  console.error("Error:", err);
+  // Log error with context
+  const errorInfo = {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip || req.connection?.remoteAddress,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Only log full details in development
+  if (process.env.NODE_ENV !== "production") {
+    console.error("Error Details:", errorInfo);
+  } else {
+    // In production, log minimal info
+    console.error(`Error [${errorInfo.method} ${errorInfo.url}]: ${errorInfo.message}`);
+  }
 
   const statusCode = err.statusCode || 500;
   const message =
@@ -298,11 +480,23 @@ function requireAuth(req, res, next) {
 }
 
 /**
+ * Sanitize string input to prevent XSS and control characters
+ * @param {string} str - String to sanitize
+ * @returns {string} Sanitized string
+ */
+function sanitizeString(str) {
+  if (typeof str !== "string") return "";
+  // Remove control characters except newlines, tabs, and carriage returns
+  return str.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, "").trim();
+}
+
+/**
  * Validate menu item data
  * @param {Object} item - Menu item object to validate
  * @returns {{valid: boolean, error?: string}} Validation result
  */
 function validateMenuItem(item) {
+  // Validate name
   if (
     !item.name ||
     typeof item.name !== "string" ||
@@ -313,9 +507,18 @@ function validateMenuItem(item) {
       error: "Item name is required and must be a non-empty string",
     };
   }
-  if (item.name.length > 200) {
+  const sanitizedName = sanitizeString(item.name);
+  if (sanitizedName.length === 0) {
+    return {
+      valid: false,
+      error: "Item name contains invalid characters",
+    };
+  }
+  if (sanitizedName.length > 200) {
     return { valid: false, error: "Item name must be 200 characters or less" };
   }
+
+  // Validate category
   if (
     !item.category ||
     typeof item.category !== "string" ||
@@ -326,26 +529,91 @@ function validateMenuItem(item) {
       error: "Category is required and must be a non-empty string",
     };
   }
-  if (item.category.length > 100) {
+  const sanitizedCategory = sanitizeString(item.category);
+  if (sanitizedCategory.length === 0) {
+    return {
+      valid: false,
+      error: "Category contains invalid characters",
+    };
+  }
+  if (sanitizedCategory.length > 100) {
     return { valid: false, error: "Category must be 100 characters or less" };
   }
+
+  // Validate price
   if (
     typeof item.price !== "number" ||
     isNaN(item.price) ||
+    !isFinite(item.price) ||
     item.price < 0 ||
     item.price > 500
   ) {
     return { valid: false, error: "Price must be a number between 0 and 500" };
   }
-  if (
-    item.description &&
-    (typeof item.description !== "string" || item.description.length > 1000)
-  ) {
-    return {
-      valid: false,
-      error: "Description must be a string with 1000 characters or less",
-    };
+
+  // Validate description
+  if (item.description) {
+    if (typeof item.description !== "string") {
+      return {
+        valid: false,
+        error: "Description must be a string",
+      };
+    }
+    const sanitizedDesc = sanitizeString(item.description);
+    if (sanitizedDesc.length > 1000) {
+      return {
+        valid: false,
+        error: "Description must be 1000 characters or less",
+      };
+    }
   }
+
+  // Validate tags
+  if (item.tags) {
+    if (!Array.isArray(item.tags)) {
+      return {
+        valid: false,
+        error: "Tags must be an array",
+      };
+    }
+    for (const tag of item.tags) {
+      if (typeof tag !== "string" || sanitizeString(tag).length === 0) {
+        return {
+          valid: false,
+          error: "All tags must be non-empty strings",
+        };
+      }
+      if (sanitizeString(tag).length > 50) {
+        return {
+          valid: false,
+          error: "Each tag must be 50 characters or less",
+        };
+      }
+    }
+  }
+
+  // Validate image (base64)
+  if (item.image && typeof item.image === "string") {
+    const imageStr = item.image.trim();
+    // Check if it's a valid base64 data URL or plain base64
+    if (
+      !imageStr.startsWith("data:image/") &&
+      !imageStr.match(/^[A-Za-z0-9+/=\s]+$/)
+    ) {
+      return {
+        valid: false,
+        error: "Invalid image format",
+      };
+    }
+    // Limit image size (rough check - 5MB max)
+    if (imageStr.length > 5 * 1024 * 1024) {
+      return {
+        valid: false,
+        error: "Image size exceeds 5MB limit",
+      };
+    }
+  }
+
   return { valid: true };
 }
 
@@ -353,13 +621,87 @@ function validateMenuItem(item) {
 // AUTHENTICATION ROUTES
 // ============================================================================
 
+// Rate limiting for login attempts (simple in-memory store)
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Rate limiting middleware for login
+ */
+function rateLimitLogin(req, res, next) {
+  // Get client IP (respects trust proxy setting)
+  const clientIp = req.ip || 
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || 
+    req.connection?.remoteAddress || 
+    "unknown";
+  const now = Date.now();
+  const attempts = loginAttempts.get(clientIp);
+
+  if (attempts) {
+    // Check if lockout period has passed
+    if (attempts.lockedUntil && now < attempts.lockedUntil) {
+      const remainingMinutes = Math.ceil((attempts.lockedUntil - now) / 60000);
+      return res.status(429).json({
+        success: false,
+        message: `Too many login attempts. Please try again in ${remainingMinutes} minute${remainingMinutes !== 1 ? "s" : ""}.`,
+      });
+    }
+
+    // Reset if lockout expired
+    if (attempts.lockedUntil && now >= attempts.lockedUntil) {
+      loginAttempts.delete(clientIp);
+    }
+  }
+
+  next();
+}
+
+/**
+ * Record failed login attempt
+ */
+function recordFailedLogin(clientIp) {
+  const now = Date.now();
+  const attempts = loginAttempts.get(clientIp) || { count: 0, lastAttempt: 0 };
+
+  attempts.count += 1;
+  attempts.lastAttempt = now;
+
+  if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
+    attempts.lockedUntil = now + LOGIN_LOCKOUT_TIME;
+    attempts.count = 0; // Reset counter after lockout
+  }
+
+  loginAttempts.set(clientIp, attempts);
+
+  // Clean up old entries (older than 1 hour)
+  setTimeout(() => {
+    const entry = loginAttempts.get(clientIp);
+    if (entry && now - entry.lastAttempt > 60 * 60 * 1000) {
+      loginAttempts.delete(clientIp);
+    }
+  }, 60 * 60 * 1000);
+}
+
+/**
+ * Clear login attempts on successful login
+ */
+function clearLoginAttempts(clientIp) {
+  loginAttempts.delete(clientIp);
+}
+
 /**
  * POST /api/auth/login
  * Authenticate admin user with password
  */
-app.post("/api/auth/login", async (req, res, next) => {
+app.post("/api/auth/login", rateLimitLogin, async (req, res, next) => {
   try {
     const { password } = req.body;
+    // Get client IP (respects trust proxy setting)
+    const clientIp = req.ip || 
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || 
+      req.connection?.remoteAddress || 
+      "unknown";
 
     if (!password || typeof password !== "string") {
       return res.status(400).json({
@@ -368,11 +710,28 @@ app.post("/api/auth/login", async (req, res, next) => {
       });
     }
 
-    if (password === ADMIN_PASSWORD) {
+    // Constant-time comparison to prevent timing attacks
+    if (password.length !== ADMIN_PASSWORD.length) {
+      recordFailedLogin(clientIp);
+      res.status(401).json({ success: false, message: "Invalid credentials" });
+      return;
+    }
+
+    let isValid = true;
+    for (let i = 0; i < password.length; i++) {
+      if (password[i] !== ADMIN_PASSWORD[i]) {
+        isValid = false;
+      }
+    }
+
+    if (isValid) {
+      clearLoginAttempts(clientIp);
       req.session.isAuthenticated = true;
       res.json({ success: true, message: "Login successful" });
     } else {
-      res.status(401).json({ success: false, message: "Incorrect password" });
+      recordFailedLogin(clientIp);
+      // Use generic error message to prevent user enumeration
+      res.status(401).json({ success: false, message: "Invalid credentials" });
     }
   } catch (error) {
     next(error);
@@ -401,7 +760,14 @@ app.post("/api/auth/logout", async (req, res, next) => {
  * Check current authentication status
  */
 app.get("/api/auth/status", (req, res) => {
-  res.json({ isAuthenticated: !!req.session.isAuthenticated });
+  // Generate CSRF token if not exists
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = generateCSRFToken();
+  }
+  res.json({ 
+    isAuthenticated: !!req.session.isAuthenticated,
+    csrfToken: req.session.csrfToken 
+  });
 });
 
 // ============================================================================
@@ -413,6 +779,11 @@ app.get("/api/auth/status", (req, res) => {
  * Get all menu items (admin only)
  */
 app.get("/api/menu", requireAuth, async (req, res, next) => {
+  // Generate CSRF token if not exists
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = generateCSRFToken();
+  }
+  res.setHeader("X-CSRF-Token", req.session.csrfToken);
   try {
     const menuData = await readMenuData();
     res.json(menuData);
@@ -425,7 +796,7 @@ app.get("/api/menu", requireAuth, async (req, res, next) => {
  * POST /api/menu
  * Create a new menu item
  */
-app.post("/api/menu", requireAuth, async (req, res, next) => {
+app.post("/api/menu", requireAuth, csrfProtection, async (req, res, next) => {
   try {
     const { name, category, price, description, tags, image } = req.body;
 
@@ -443,12 +814,12 @@ app.post("/api/menu", requireAuth, async (req, res, next) => {
     }
 
     const newItem = {
-      name: String(name || "").trim(),
-      category: String(category || "").trim(),
+      name: sanitizeString(String(name || "")),
+      category: sanitizeString(String(category || "")),
       price: parseFloat(price),
-      description: String(description || "").trim(),
-      tags: tagsArray,
-      image: image || null, // Store base64 image or null
+      description: sanitizeString(String(description || "")),
+      tags: tagsArray.map(tag => sanitizeString(tag)),
+      image: image ? String(image).trim() : null, // Store base64 image or null
     };
 
     const validation = validateMenuItem(newItem);
@@ -492,7 +863,7 @@ app.post("/api/menu", requireAuth, async (req, res, next) => {
  * PUT /api/menu/:id
  * Update an existing menu item
  */
-app.put("/api/menu/:id", requireAuth, async (req, res, next) => {
+app.put("/api/menu/:id", requireAuth, csrfProtection, async (req, res, next) => {
   try {
     const itemId = parseInt(req.params.id);
     const { name, category, price, description, tags, image } = req.body;
@@ -521,12 +892,12 @@ app.put("/api/menu/:id", requireAuth, async (req, res, next) => {
     const existingItem = menuData.find((item) => item.id === itemId);
 
     const updatedItem = {
-      name: String(name || "").trim(),
-      category: String(category || "").trim(),
+      name: sanitizeString(String(name || "")),
+      category: sanitizeString(String(category || "")),
       price: parseFloat(price),
-      description: String(description || "").trim(),
-      tags: tagsArray,
-      image: image !== undefined ? image : existingItem?.image || null, // Keep existing image if not provided
+      description: sanitizeString(String(description || "")),
+      tags: tagsArray.map(tag => sanitizeString(tag)),
+      image: image !== undefined ? (image ? String(image).trim() : null) : existingItem?.image || null, // Keep existing image if not provided
     };
 
     const validation = validateMenuItem(updatedItem);
@@ -571,7 +942,7 @@ app.put("/api/menu/:id", requireAuth, async (req, res, next) => {
  * DELETE /api/menu/:id
  * Delete a menu item
  */
-app.delete("/api/menu/:id", requireAuth, async (req, res, next) => {
+app.delete("/api/menu/:id", requireAuth, csrfProtection, async (req, res, next) => {
   try {
     const itemId = parseInt(req.params.id);
 
@@ -628,7 +999,7 @@ app.get("/api/menu/export", requireAuth, async (req, res, next) => {
  * POST /api/menu/import
  * Import menu data from JSON
  */
-app.post("/api/menu/import", requireAuth, async (req, res, next) => {
+app.post("/api/menu/import", requireAuth, csrfProtection, async (req, res, next) => {
   try {
     let data, replace;
 
@@ -670,10 +1041,10 @@ app.post("/api/menu/import", requireAuth, async (req, res, next) => {
       const validation = validateMenuItem(item);
       if (validation.valid) {
         const validItem = {
-          name: String(item.name || "").trim(),
-          category: String(item.category || "").trim(),
+          name: sanitizeString(String(item.name || "")),
+          category: sanitizeString(String(item.category || "")),
           price: parseFloat(item.price) || 0,
-          description: String(item.description || "").trim(),
+          description: sanitizeString(String(item.description || "")),
         };
 
         // Preserve tags if present
@@ -681,11 +1052,11 @@ app.post("/api/menu/import", requireAuth, async (req, res, next) => {
           if (Array.isArray(item.tags)) {
             validItem.tags = item.tags
               .filter((tag) => tag && String(tag).trim().length > 0)
-              .map((tag) => String(tag).trim());
+              .map((tag) => sanitizeString(String(tag)));
           } else if (typeof item.tags === "string") {
             validItem.tags = item.tags
               .split(",")
-              .map((tag) => tag.trim())
+              .map((tag) => sanitizeString(tag.trim()))
               .filter((tag) => tag.length > 0);
           }
         }
@@ -832,7 +1203,7 @@ app.get("/api/settings", async (req, res, next) => {
  * PUT /api/settings
  * Update UI settings (protected)
  */
-app.put("/api/settings", requireAuth, async (req, res, next) => {
+app.put("/api/settings", requireAuth, csrfProtection, async (req, res, next) => {
   try {
     const settings = req.body;
 
@@ -902,6 +1273,21 @@ app.put("/api/settings", requireAuth, async (req, res, next) => {
 // ERROR HANDLING
 // ============================================================================
 
+/**
+ * Health check endpoint
+ * GET /health
+ * Returns server health status
+ */
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
+    version: "2.0.0",
+  });
+});
+
 app.use(errorHandler);
 
 // Handle 404 errors
@@ -920,16 +1306,26 @@ app.use((req, res) => {
  * Start the Express server with error handling
  */
 const server = app.listen(PORT, () => {
-  console.log("=".repeat(50));
-  console.log("🚀 Lorem Ipsum Admin Server Started");
-  console.log("=".repeat(50));
-  console.log(`📊 Admin panel: http://localhost:${PORT}/loginadminonly.html`);
-  console.log(`🏠 Main website: http://localhost:${PORT}/index.html`);
-  console.log(`🔐 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`✅ Environment variables loaded successfully`);
-  console.log(`⚡ Compression: Enabled`);
-  console.log(`💾 Caching: Enabled (${cache.CACHE_TTL}ms TTL)`);
-  console.log("=".repeat(50));
+  const isProduction = process.env.NODE_ENV === "production";
+  
+  if (!isProduction) {
+    // Development logging
+    console.log("=".repeat(50));
+    console.log("🚀 Lorem Ipsum Admin Server Started");
+    console.log("=".repeat(50));
+    console.log(`📊 Admin panel: http://localhost:${PORT}/loginadminonly.html`);
+    console.log(`🏠 Main website: http://localhost:${PORT}/index.html`);
+    console.log(`🔐 Environment: ${process.env.NODE_ENV || "development"}`);
+    console.log(`✅ Environment variables loaded successfully`);
+    console.log(`⚡ Compression: Enabled`);
+    console.log(`💾 Caching: Enabled (${cache.CACHE_TTL}ms TTL)`);
+    console.log("=".repeat(50));
+  } else {
+    // Production logging (minimal)
+    console.log(`Server started on port ${PORT}`);
+    console.log(`Environment: production`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+  }
 });
 
 // Handle server errors (e.g., port already in use)

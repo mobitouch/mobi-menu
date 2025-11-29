@@ -54,6 +54,9 @@ const state = {
   currentSort: "default",
   currentCategory: "all",
   settings: null,
+  lastMenuDataHash: null, // Hash of menu data for change detection
+  lastSettingsHash: null, // Hash of settings for change detection
+  autoRefreshInterval: null, // Auto-refresh interval ID
 };
 
 // ============================================================================
@@ -149,12 +152,13 @@ function showError(message) {
 
 /**
  * Load and apply UI settings from server
- * @returns {Promise<Object>} Settings object
+ * @param {boolean} checkChanges - Whether to check for changes only (returns null if no changes)
+ * @returns {Promise<Object|null>} Settings object or null if no changes
  */
-async function loadAndApplySettings() {
+async function loadAndApplySettings(checkChanges = false) {
   try {
     const response = await fetch("/api/settings", {
-      cache: "default",
+      cache: checkChanges ? "no-store" : "default",
       headers: {
         Accept: "application/json",
       },
@@ -169,6 +173,18 @@ async function loadAndApplySettings() {
     // Validate settings structure
     if (!settings || typeof settings !== "object") {
       throw new Error("Invalid settings format");
+    }
+
+    // Check for changes if requested
+    if (checkChanges) {
+      const newHash = generateDataHash(settings);
+      if (newHash === state.lastSettingsHash) {
+        return null; // No changes
+      }
+      state.lastSettingsHash = newHash;
+    } else {
+      // Store hash on initial load
+      state.lastSettingsHash = generateDataHash(settings);
     }
 
     state.settings = settings;
@@ -186,11 +202,14 @@ async function loadAndApplySettings() {
     renderFilters();
     return settings;
   } catch (error) {
-    state.settings = DEFAULT_SETTINGS;
-    applySettings(DEFAULT_SETTINGS);
-    state.filterCategories = DEFAULT_FILTER_CATEGORIES;
-    renderFilters();
-    return DEFAULT_SETTINGS;
+    if (!checkChanges) {
+      state.settings = DEFAULT_SETTINGS;
+      applySettings(DEFAULT_SETTINGS);
+      state.filterCategories = DEFAULT_FILTER_CATEGORIES;
+      renderFilters();
+      return DEFAULT_SETTINGS;
+    }
+    return null;
   }
 }
 
@@ -638,13 +657,35 @@ function hideLoadingScreen() {
 // ============================================================================
 
 /**
- * Load menu data from server
- * @returns {Promise<Array>} Promise resolving to menu data array
+ * Generate a simple hash from data for change detection
+ * @param {any} data - Data to hash
+ * @returns {string} Hash string
  */
-async function loadMenuData() {
+function generateDataHash(data) {
+  try {
+    const jsonString = JSON.stringify(data);
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < jsonString.length; i++) {
+      const char = jsonString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Load menu data from server
+ * @param {boolean} checkChanges - Whether to check for changes only (returns null if no changes)
+ * @returns {Promise<Array|null>} Promise resolving to menu data array or null if no changes
+ */
+async function loadMenuData(checkChanges = false) {
   try {
     const response = await fetch("data.json", {
-      cache: "default",
+      cache: checkChanges ? "no-store" : "default",
       headers: {
         Accept: "application/json",
       },
@@ -661,10 +702,25 @@ async function loadMenuData() {
       throw new Error("Invalid menu data format");
     }
 
+    // Check for changes if requested
+    if (checkChanges) {
+      const newHash = generateDataHash(data);
+      if (newHash === state.lastMenuDataHash) {
+        return null; // No changes
+      }
+      state.lastMenuDataHash = newHash;
+    } else {
+      // Store hash on initial load
+      state.lastMenuDataHash = generateDataHash(data);
+    }
+
     state.menuData = data;
     return data;
   } catch (error) {
-    throw error;
+    if (!checkChanges) {
+      throw error;
+    }
+    return null;
   }
 }
 
@@ -714,6 +770,9 @@ async function initialize() {
     updateSortButtonText();
     initScrollToTop();
 
+    // Start auto-refresh mechanism
+    startAutoRefresh();
+
     // Hide loading screen
     hideLoadingScreen();
   } catch (error) {
@@ -721,6 +780,109 @@ async function initialize() {
     hideLoadingScreen();
   }
 }
+
+// ============================================================================
+// AUTO-REFRESH MECHANISM
+// ============================================================================
+
+/**
+ * Check for updates and refresh if changes detected
+ */
+async function checkForUpdates() {
+  try {
+    // Check both menu data and settings in parallel
+    const [menuData, settings] = await Promise.all([
+      loadMenuData(true), // checkChanges = true
+      loadAndApplySettings(true), // checkChanges = true
+    ]);
+
+    let needsRefresh = false;
+
+    // Check if menu data changed
+    if (menuData !== null) {
+      // Menu data has changed
+      state.menuData = menuData;
+      needsRefresh = true;
+    }
+
+    // Check if settings changed
+    if (settings !== null) {
+      // Settings have changed - already applied in loadAndApplySettings
+      // Filters have been re-rendered, but we need to re-render menu items too
+      needsRefresh = true;
+    }
+
+    // Refresh display if changes detected
+    if (needsRefresh) {
+      // Preserve current filter and sort
+      const currentCategory = state.currentCategory;
+      const currentSort = state.currentSort;
+
+      // Apply current filter
+      const filteredItems =
+        currentCategory === "all"
+          ? state.menuData
+          : state.menuData.filter(
+              (item) =>
+                item.category &&
+                item.category.toLowerCase() === currentCategory.toLowerCase()
+            );
+
+      // Apply current sort
+      const sortedItems = sortMenuItems(filteredItems, currentSort);
+
+      // Re-render menu (this will update the display with new data)
+      renderMenu(sortedItems);
+      
+      // If settings changed, filters were already re-rendered by loadAndApplySettings
+      // But we need to make sure the active filter button is still highlighted
+      if (settings !== null && elements.filtersContainer) {
+        const filterBtns = elements.filtersContainer.querySelectorAll(".filter-btn");
+        filterBtns.forEach((btn) => {
+          const btnCategory = btn.getAttribute("data-category") || "all";
+          if (btnCategory.toLowerCase() === currentCategory.toLowerCase()) {
+            btn.classList.add("active");
+          } else {
+            btn.classList.remove("active");
+          }
+        });
+      }
+    }
+  } catch (error) {
+    // Silently fail - don't interrupt user experience
+    // Silently fail - don't interrupt user experience
+  }
+}
+
+/**
+ * Start auto-refresh mechanism
+ * Checks for updates every 5 seconds
+ */
+function startAutoRefresh() {
+  // Clear any existing interval
+  if (state.autoRefreshInterval) {
+    clearInterval(state.autoRefreshInterval);
+  }
+
+  // Check for updates every 5 seconds
+  state.autoRefreshInterval = setInterval(() => {
+    checkForUpdates();
+  }, 5000); // 5 seconds
+
+  // Also check when page becomes visible (user switches back to tab)
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      // Page became visible, check for updates immediately
+      checkForUpdates();
+    }
+  });
+
+  // Check when window regains focus
+  window.addEventListener("focus", () => {
+    checkForUpdates();
+  });
+}
+
 
 // ============================================================================
 // START APPLICATION
