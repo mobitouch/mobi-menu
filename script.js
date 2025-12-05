@@ -4,6 +4,34 @@
  * @version 2.0.0
  */
 
+/**
+ * Format time from 24-hour to 12-hour format
+ * @param {string} time24 - Time in 24-hour format (HH:MM)
+ * @returns {string} Formatted time
+ */
+function formatTime12(time24) {
+  const [hours, minutes] = time24.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${minutes.toString().padStart(2, "0")} ${period}`;
+}
+
+/**
+ * Format date and time for display
+ * @param {Date} date - Date to format
+ * @returns {string} Formatted date/time
+ */
+function formatDateTime(date) {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[date.getMonth()];
+  const day = date.getDate();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+  return `${month} ${day} at ${displayHours}:${minutes.toString().padStart(2, "0")} ${period}`;
+}
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -549,9 +577,15 @@ function renderMenu(items) {
     const price = parseFloat(item.price) || 0;
     const description = escapeHtml(item.description || "");
     const category = escapeHtml(item.category || "");
+    const isAvailable = item.available !== false; // Default to true if not set
+
+    // Check schedule availability
+    const scheduleInfo = item.scheduleAvailability || {};
+    const isScheduledAvailable = scheduleInfo.isAvailable !== false;
+    const finalAvailable = isAvailable && isScheduledAvailable;
 
     const menuItem = document.createElement("div");
-    menuItem.className = "menu-item";
+    menuItem.className = `menu-item ${finalAvailable ? "" : "unavailable"}`;
     menuItem.dataset.id = item.id || "";
 
     const content = document.createElement("div");
@@ -566,6 +600,10 @@ function renderMenu(items) {
       img.src = item.image;
       img.alt = name;
       img.loading = "lazy";
+      if (!finalAvailable) {
+        img.style.opacity = "0.5";
+        img.style.filter = "grayscale(100%)";
+      }
       imageContainer.appendChild(img);
       content.appendChild(imageContainer);
     }
@@ -583,6 +621,52 @@ function renderMenu(items) {
 
     header.appendChild(nameEl);
     header.appendChild(priceEl);
+
+    // Add schedule info badge if scheduled
+    if (item.schedule && Object.keys(item.schedule).length > 0) {
+      const scheduleBadge = document.createElement("span");
+      scheduleBadge.className = `schedule-badge ${isScheduledAvailable ? "available" : "unavailable"}`;
+      
+      if (isScheduledAvailable) {
+        // Show when it's available
+        if (item.schedule.timeRange?.start && item.schedule.timeRange?.end) {
+          scheduleBadge.textContent = `Available ${formatTime12(item.schedule.timeRange.start)} - ${formatTime12(item.schedule.timeRange.end)}`;
+        } else if (item.schedule.timeRange?.start) {
+          scheduleBadge.textContent = `From ${formatTime12(item.schedule.timeRange.start)}`;
+        } else if (item.schedule.timeRange?.end) {
+          scheduleBadge.textContent = `Until ${formatTime12(item.schedule.timeRange.end)}`;
+        } else {
+          scheduleBadge.textContent = "Scheduled";
+        }
+      } else {
+        // Show why it's unavailable
+        scheduleBadge.textContent = scheduleInfo.reason || "Not available now";
+        if (scheduleInfo.nextAvailable) {
+          scheduleBadge.title = `${scheduleInfo.reason || "Not available"}. Next available: ${formatDateTime(scheduleInfo.nextAvailable)}`;
+        } else {
+          scheduleBadge.title = scheduleInfo.reason || "Not available";
+        }
+      }
+      
+      header.appendChild(scheduleBadge);
+    }
+
+    // Add unavailable badge if item is manually unavailable
+    if (!isAvailable) {
+      const unavailableBadge = document.createElement("span");
+      unavailableBadge.className = "unavailable-badge";
+      unavailableBadge.textContent = "Unavailable";
+      if (item.unavailableReason) {
+        unavailableBadge.title = item.unavailableReason;
+      }
+      header.appendChild(unavailableBadge);
+    } else if (!isScheduledAvailable && !item.schedule) {
+      // Only show unavailable badge if not scheduled (scheduled items show schedule badge instead)
+      const unavailableBadge = document.createElement("span");
+      unavailableBadge.className = "unavailable-badge";
+      unavailableBadge.textContent = "Unavailable";
+      header.appendChild(unavailableBadge);
+    }
 
     const descEl = document.createElement("p");
     descEl.className = "item-desc";

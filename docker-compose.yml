@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  bouli-menu:
+    build: .
+    container_name: bouli-menu
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # Change if your server.js listens on another port
+    environment:
+      NODE_ENV: production
+      # Cookie security: Set to "true" only if using HTTPS with reverse proxy
+      # For HTTP access in Docker, keep this as "false"
+      COOKIE_SECURE: "false"
+      # SameSite: "lax" works best for most scenarios, "strict" is more secure but restrictive
+      COOKIE_SAMESITE: "lax"
+      # Required: Set ADMIN_PASSWORD and SESSION_SECRET via .env file or environment
+      # ADMIN_PASSWORD: your_admin_password
+      # SESSION_SECRET: your_session_secret_key
+    command: ["npm", "start"]

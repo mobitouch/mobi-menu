@@ -49,6 +49,15 @@ const elements = {
   imagePreview: null,
   imagePreviewContainer: null,
   removeImageBtn: null,
+  itemAvailable: null,
+  itemUnavailableReason: null,
+  enableSchedule: null,
+  scheduleOptions: null,
+  scheduleDays: null,
+  scheduleStartTime: null,
+  scheduleEndTime: null,
+  scheduleStartDate: null,
+  scheduleEndDate: null,
   formTitle: null,
   submitBtn: null,
   cancelBtn: null,
@@ -142,6 +151,15 @@ function initializeElements() {
       "image-preview-container"
     );
     elements.removeImageBtn = document.getElementById("remove-image-btn");
+    elements.itemAvailable = document.getElementById("item-available");
+    elements.itemUnavailableReason = document.getElementById("item-unavailable-reason");
+    elements.enableSchedule = document.getElementById("enable-schedule");
+    elements.scheduleOptions = document.getElementById("schedule-options");
+    elements.scheduleDays = document.querySelectorAll(".schedule-day");
+    elements.scheduleStartTime = document.getElementById("schedule-start-time");
+    elements.scheduleEndTime = document.getElementById("schedule-end-time");
+    elements.scheduleStartDate = document.getElementById("schedule-start-date");
+    elements.scheduleEndDate = document.getElementById("schedule-end-date");
     elements.formTitle = document.getElementById("form-title");
     elements.submitBtn = document.getElementById("submit-btn");
     elements.cancelBtn = document.getElementById("cancel-btn");
@@ -794,11 +812,8 @@ function updateActiveNav(section) {
  */
 async function checkAuth() {
   try {
-    const response = await fetch("/api/auth/status", {
+    const response = await apiFetch("/api/auth/status", {
       cache: "no-store",
-      headers: {
-        Accept: "application/json",
-      },
     });
 
     if (!response.ok) {
@@ -824,6 +839,7 @@ async function checkAuth() {
       showLogin();
     }
   } catch (error) {
+    // Auth check failed - silently handle
     showLogin();
   }
 }
@@ -933,7 +949,7 @@ function initAuth() {
     }
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
@@ -992,7 +1008,7 @@ function initAuth() {
     const logoutHandler = async (e) => {
       e.preventDefault();
       try {
-        await fetch("/api/auth/logout", { method: "POST" });
+        await apiFetch("/api/auth/logout", { method: "POST" });
         showMessage("Logged out successfully", "success", 2000);
         // Small delay to show toast before redirecting
         setTimeout(() => {
@@ -1050,12 +1066,30 @@ function getRequestHeaders() {
 }
 
 /**
+ * Fetch wrapper that ensures credentials are included
+ * @param {string} url - URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>} Fetch response
+ */
+function apiFetch(url, options = {}) {
+  const fetchOptions = {
+    ...options,
+    credentials: "same-origin", // Always include cookies
+    headers: {
+      Accept: "application/json",
+      ...options.headers,
+    },
+  };
+  return fetch(url, fetchOptions);
+}
+
+/**
  * Refresh settings from server (helper function)
  * @returns {Promise<boolean>} True if successful, false otherwise
  */
 async function refreshSettings() {
   try {
-    const response = await fetch("/api/settings", {
+    const response = await apiFetch("/api/settings", {
       cache: "no-store",
     });
     if (response.ok) {
@@ -1078,9 +1112,8 @@ async function refreshSettings() {
  */
 async function refreshMenuItems() {
   try {
-    const response = await fetch("/api/menu", {
+    const response = await apiFetch("/api/menu", {
       cache: "no-store",
-      headers: { Accept: "application/json" },
     });
     if (response.ok) {
       updateCSRFToken(response);
@@ -1099,15 +1132,27 @@ async function refreshMenuItems() {
  */
 async function loadMenuItems() {
   try {
-    const response = await fetch("/api/menu", {
+    const response = await apiFetch("/api/menu", {
       cache: "no-store",
-      headers: {
-        Accept: "application/json",
-      },
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to load menu items`);
+      // Handle authentication errors specifically
+      if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({}));
+        showMessage(
+          "Session expired or authentication failed. Please log in again.",
+          "error",
+          5000
+        );
+        // Clear authentication state and show login
+        state.isAuthenticated = false;
+        state.csrfToken = null;
+        showLogin();
+        return;
+      }
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status}: ${errorText || "Failed to load menu items"}`);
     }
 
     updateCSRFToken(response);
@@ -1118,7 +1163,12 @@ async function loadMenuItems() {
     populateCategoryDropdown(); // Update category dropdown with new items
     initializeSortButtons();
   } catch (error) {
-    showMessage("Error loading menu items", "error");
+    // Error loading menu items - handled by showMessage
+    showMessage(
+      error.message || "Error loading menu items. Please check your connection and try again.",
+      "error",
+      5000
+    );
   }
 }
 
@@ -1362,9 +1412,50 @@ function renderMenuItems() {
     badge.className = "category-badge";
     badge.textContent = category;
 
+    // Availability badge
+    const isAvailable = item.available !== false; // Default to true if not set
+    const availabilityBadge = document.createElement("span");
+    availabilityBadge.className = `availability-badge ${isAvailable ? "available" : "unavailable"}`;
+    availabilityBadge.textContent = isAvailable ? "Available" : "Unavailable";
+    availabilityBadge.title = isAvailable 
+      ? "This item is currently available" 
+      : (item.unavailableReason || "This item is currently unavailable");
+
+    // Schedule badge (if schedule exists)
+    let scheduleBadge = null;
+    if (item.schedule && Object.keys(item.schedule).length > 0) {
+      scheduleBadge = document.createElement("span");
+      scheduleBadge.className = "schedule-badge";
+      scheduleBadge.textContent = "Scheduled";
+      
+      // Build schedule description for tooltip
+      const scheduleParts = [];
+      if (item.schedule.days && item.schedule.days.length > 0) {
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        scheduleParts.push(dayNames.filter((_, i) => item.schedule.days.includes(i)).join(", "));
+      }
+      if (item.schedule.timeRange) {
+        const timeParts = [];
+        if (item.schedule.timeRange.start) timeParts.push(item.schedule.timeRange.start);
+        if (item.schedule.timeRange.end) timeParts.push(item.schedule.timeRange.end);
+        if (timeParts.length > 0) scheduleParts.push(timeParts.join(" - "));
+      }
+      if (item.schedule.dateRange) {
+        const dateParts = [];
+        if (item.schedule.dateRange.start) dateParts.push(item.schedule.dateRange.start);
+        if (item.schedule.dateRange.end) dateParts.push(item.schedule.dateRange.end);
+        if (dateParts.length > 0) scheduleParts.push(dateParts.join(" to "));
+      }
+      scheduleBadge.title = scheduleParts.length > 0 ? `Schedule: ${scheduleParts.join(" | ")}` : "Scheduled availability";
+    }
+
     itemHeader.appendChild(idBadge);
     itemHeader.appendChild(title);
     itemHeader.appendChild(badge);
+    itemHeader.appendChild(availabilityBadge);
+    if (scheduleBadge) {
+      itemHeader.appendChild(scheduleBadge);
+    }
 
     const priceEl = document.createElement("p");
     priceEl.className = "item-price";
@@ -1396,6 +1487,14 @@ function renderMenuItems() {
     const actions = document.createElement("div");
     actions.className = "item-actions";
 
+    // Availability toggle button
+    const availabilityBtn = createActionButton(
+      isAvailable ? "Mark Unavailable" : "Mark Available",
+      isAvailable ? "btn-unavailable" : "btn-available",
+      () => toggleItemAvailability(id, !isAvailable),
+      isAvailable ? "Mark as unavailable" : "Mark as available"
+    );
+
     const duplicateBtn = createActionButton(
       "Duplicate",
       "btn-duplicate",
@@ -1415,6 +1514,7 @@ function renderMenuItems() {
       "Delete " + name
     );
 
+    actions.appendChild(availabilityBtn);
     actions.appendChild(duplicateBtn);
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
@@ -1457,6 +1557,12 @@ function createActionButton(text, className, onClick, ariaLabel) {
   } else if (className === "btn-delete") {
     svgPath =
       "M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1m2 0v9a1 1 0 01-1 1H4a1 1 0 01-1-1V4h10zM6 7v4M10 7v4";
+  } else if (className === "btn-available") {
+    svgPath =
+      "M8 14A6 6 0 108 2a6 6 0 000 12zM6 8l2 2 4-4";
+  } else if (className === "btn-unavailable") {
+    svgPath =
+      "M8 14A6 6 0 108 2a6 6 0 000 12zM6 6l4 4M10 6l-4 4";
   }
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1469,13 +1575,8 @@ function createActionButton(text, className, onClick, ariaLabel) {
   path.setAttribute("d", svgPath);
   path.setAttribute("stroke", "currentColor");
   path.setAttribute("stroke-width", "1.5");
-  if (className === "btn-duplicate" || className === "btn-edit") {
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-  } else {
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-  }
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
 
   svg.appendChild(path);
   button.appendChild(svg);
@@ -1625,6 +1726,37 @@ function initItemForm() {
     });
   }
 
+  // Initialize availability checkbox handler
+  if (elements.itemAvailable && elements.itemUnavailableReason) {
+    addEventListener(elements.itemAvailable, "change", (e) => {
+      if (elements.itemUnavailableReason) {
+        elements.itemUnavailableReason.style.display = e.target.checked ? "none" : "block";
+        if (e.target.checked) {
+          elements.itemUnavailableReason.value = "";
+        }
+      }
+    });
+  }
+
+  // Initialize schedule checkbox handler
+  if (elements.enableSchedule && elements.scheduleOptions) {
+    addEventListener(elements.enableSchedule, "change", (e) => {
+      if (elements.scheduleOptions) {
+        elements.scheduleOptions.style.display = e.target.checked ? "block" : "none";
+        if (!e.target.checked) {
+          // Clear schedule fields when disabled
+          if (elements.scheduleDays) {
+            elements.scheduleDays.forEach(cb => cb.checked = false);
+          }
+          if (elements.scheduleStartTime) elements.scheduleStartTime.value = "";
+          if (elements.scheduleEndTime) elements.scheduleEndTime.value = "";
+          if (elements.scheduleStartDate) elements.scheduleStartDate.value = "";
+          if (elements.scheduleEndDate) elements.scheduleEndDate.value = "";
+        }
+      }
+    });
+  }
+
   addEventListener(elements.itemForm, "submit", async (e) => {
     e.preventDefault();
 
@@ -1656,6 +1788,55 @@ function initItemForm() {
 
     const categoryValue = elements.itemCategory?.value?.trim() || "";
     
+    // Build schedule object if enabled
+    let schedule = null;
+    if (elements.enableSchedule && elements.enableSchedule.checked) {
+      schedule = {};
+      
+      // Get selected days
+      if (elements.scheduleDays) {
+        const selectedDays = Array.from(elements.scheduleDays)
+          .filter(cb => cb.checked)
+          .map(cb => parseInt(cb.value));
+        if (selectedDays.length > 0) {
+          schedule.days = selectedDays;
+        }
+      }
+      
+      // Get time range
+      if (elements.scheduleStartTime || elements.scheduleEndTime) {
+        schedule.timeRange = {};
+        if (elements.scheduleStartTime && elements.scheduleStartTime.value) {
+          schedule.timeRange.start = elements.scheduleStartTime.value;
+        }
+        if (elements.scheduleEndTime && elements.scheduleEndTime.value) {
+          schedule.timeRange.end = elements.scheduleEndTime.value;
+        }
+        if (Object.keys(schedule.timeRange).length === 0) {
+          delete schedule.timeRange;
+        }
+      }
+      
+      // Get date range
+      if (elements.scheduleStartDate || elements.scheduleEndDate) {
+        schedule.dateRange = {};
+        if (elements.scheduleStartDate && elements.scheduleStartDate.value) {
+          schedule.dateRange.start = elements.scheduleStartDate.value;
+        }
+        if (elements.scheduleEndDate && elements.scheduleEndDate.value) {
+          schedule.dateRange.end = elements.scheduleEndDate.value;
+        }
+        if (Object.keys(schedule.dateRange).length === 0) {
+          delete schedule.dateRange;
+        }
+      }
+      
+      // Only add schedule if it has at least one property
+      if (Object.keys(schedule).length === 0) {
+        schedule = null;
+      }
+    }
+    
     const itemData = {
       name: elements.itemName?.value?.trim() || "",
       category: categoryValue || "starters", // Default to "starters" if empty
@@ -1663,6 +1844,11 @@ function initItemForm() {
       description: elements.itemDescription?.value?.trim() || "",
       tags: tags,
       image: imageBase64,
+      available: elements.itemAvailable ? elements.itemAvailable.checked : true,
+      unavailableReason: elements.itemUnavailableReason && !elements.itemAvailable?.checked
+        ? elements.itemUnavailableReason.value.trim() || null
+        : null,
+      schedule: schedule,
     };
 
     if (!itemData.name) {
@@ -1685,7 +1871,7 @@ function initItemForm() {
         : "/api/menu";
       const method = state.editingItemId ? "PUT" : "POST";
 
-      response = await fetch(url, {
+      response = await apiFetch(url, {
         method,
         headers: getRequestHeaders(),
         body: JSON.stringify({
@@ -1804,6 +1990,57 @@ window.editItem = async function (id) {
     elements.itemImage.value = "";
   }
 
+  // Handle availability
+  const isAvailable = item.available !== false; // Default to true
+  if (elements.itemAvailable) {
+    elements.itemAvailable.checked = isAvailable;
+  }
+  if (elements.itemUnavailableReason) {
+    elements.itemUnavailableReason.value = item.unavailableReason || "";
+    elements.itemUnavailableReason.style.display = isAvailable ? "none" : "block";
+  }
+
+  // Handle schedule
+  if (elements.enableSchedule && elements.scheduleOptions) {
+    const hasSchedule = item.schedule && Object.keys(item.schedule).length > 0;
+    elements.enableSchedule.checked = hasSchedule;
+    elements.scheduleOptions.style.display = hasSchedule ? "block" : "none";
+    
+    if (hasSchedule) {
+      // Set days
+      if (elements.scheduleDays && item.schedule.days) {
+        elements.scheduleDays.forEach(cb => {
+          cb.checked = item.schedule.days.includes(parseInt(cb.value));
+        });
+      }
+      
+      // Set time range
+      if (elements.scheduleStartTime && item.schedule.timeRange?.start) {
+        elements.scheduleStartTime.value = item.schedule.timeRange.start;
+      }
+      if (elements.scheduleEndTime && item.schedule.timeRange?.end) {
+        elements.scheduleEndTime.value = item.schedule.timeRange.end;
+      }
+      
+      // Set date range
+      if (elements.scheduleStartDate && item.schedule.dateRange?.start) {
+        elements.scheduleStartDate.value = item.schedule.dateRange.start;
+      }
+      if (elements.scheduleEndDate && item.schedule.dateRange?.end) {
+        elements.scheduleEndDate.value = item.schedule.dateRange.end;
+      }
+    } else {
+      // Clear schedule fields
+      if (elements.scheduleDays) {
+        elements.scheduleDays.forEach(cb => cb.checked = false);
+      }
+      if (elements.scheduleStartTime) elements.scheduleStartTime.value = "";
+      if (elements.scheduleEndTime) elements.scheduleEndTime.value = "";
+      if (elements.scheduleStartDate) elements.scheduleStartDate.value = "";
+      if (elements.scheduleEndDate) elements.scheduleEndDate.value = "";
+    }
+  }
+
   if (elements.formTitle) elements.formTitle.textContent = "Edit Item";
   if (elements.submitBtnText)
     elements.submitBtnText.textContent = "Update Item";
@@ -1838,7 +2075,7 @@ window.deleteItem = async function (id) {
       return;
     }
 
-    const response = await fetch(`/api/menu/${itemId}`, {
+    const response = await apiFetch(`/api/menu/${itemId}`, {
       method: "DELETE",
       headers: getRequestHeaders(),
       body: JSON.stringify({ _csrf: state.csrfToken }),
@@ -1873,6 +2110,62 @@ window.deleteItem = async function (id) {
 };
 
 /**
+ * Toggle item availability status
+ * @param {number|string} id - Item ID
+ * @param {boolean} available - New availability status
+ */
+window.toggleItemAvailability = async function (id, available) {
+  try {
+    const itemId = typeof id === "string" ? parseInt(id, 10) : id;
+
+    if (isNaN(itemId)) {
+      showMessage("Invalid item ID", "error");
+      return;
+    }
+
+    const response = await apiFetch(`/api/menu/${itemId}/availability`, {
+      method: "PATCH",
+      headers: getRequestHeaders(),
+      body: JSON.stringify({
+        available: available,
+        _csrf: state.csrfToken,
+      }),
+    });
+
+    if (response.ok) {
+      updateCSRFToken(response);
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+      showMessage(
+        data.message || `Item ${available ? "marked as available" : "marked as unavailable"}`,
+        "success"
+      );
+      await loadMenuItems();
+      updateBulkActionsBar();
+      // Refresh statistics if visible
+      if (elements.statsSection && elements.statsSection.style.display !== "none") {
+        renderStatistics();
+      }
+    } else {
+      showMessage(data.message || "Failed to update availability", "error");
+    }
+  } catch (error) {
+    showMessage(
+      error.message || "Failed to update item availability. Please try again.",
+      "error"
+    );
+  }
+};
+
+/**
  * Duplicate menu item
  * @param {number} id - Item ID
  */
@@ -1900,7 +2193,7 @@ window.duplicateItem = async function (id) {
       image: item.image || null,
     };
 
-    const response = await fetch("/api/menu", {
+    const response = await apiFetch("/api/menu", {
       method: "POST",
       headers: getRequestHeaders(),
       body: JSON.stringify({
@@ -1994,8 +2287,10 @@ async function bulkDeleteItems() {
 
     for (const id of selectedIds) {
       try {
-        const response = await fetch(`/api/menu/${id}`, {
+        const response = await apiFetch(`/api/menu/${id}`, {
           method: "DELETE",
+          headers: getRequestHeaders(),
+          body: JSON.stringify({ _csrf: state.csrfToken }),
         });
 
         if (response.ok) {
@@ -2302,7 +2597,7 @@ function createStatCard(title, value, description, iconPaths) {
  */
 async function exportMenuData() {
   try {
-    const response = await fetch("/api/menu/export");
+    const response = await apiFetch("/api/menu/export");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -2382,7 +2677,7 @@ async function importMenuData() {
       throw new Error("Invalid file format. Expected an array of menu items.");
     }
 
-    const response = await fetch("/api/menu/import", {
+    const response = await apiFetch("/api/menu/import", {
       method: "POST",
       headers: getRequestHeaders(),
       body: JSON.stringify({
@@ -2445,6 +2740,30 @@ function resetForm() {
   if (elements.formTitle) elements.formTitle.textContent = "Add New Item";
   if (elements.submitBtnText) elements.submitBtnText.textContent = "Add Item";
   if (elements.cancelBtn) elements.cancelBtn.style.display = "inline-block";
+  
+  // Reset availability to default (available)
+  if (elements.itemAvailable) {
+    elements.itemAvailable.checked = true;
+  }
+  if (elements.itemUnavailableReason) {
+    elements.itemUnavailableReason.value = "";
+    elements.itemUnavailableReason.style.display = "none";
+  }
+
+  // Reset schedule
+  if (elements.enableSchedule) {
+    elements.enableSchedule.checked = false;
+  }
+  if (elements.scheduleOptions) {
+    elements.scheduleOptions.style.display = "none";
+  }
+  if (elements.scheduleDays) {
+    elements.scheduleDays.forEach(cb => cb.checked = false);
+  }
+  if (elements.scheduleStartTime) elements.scheduleStartTime.value = "";
+  if (elements.scheduleEndTime) elements.scheduleEndTime.value = "";
+  if (elements.scheduleStartDate) elements.scheduleStartDate.value = "";
+  if (elements.scheduleEndDate) elements.scheduleEndDate.value = "";
   
   // Set default category to "starters" when creating new items
   if (elements.itemCategory) {
@@ -2863,7 +3182,7 @@ async function addCategoryToFilters(category) {
       state.uiSettings.filterCategories.push(newFilter);
 
       // Save settings to server
-      const response = await fetch("/api/settings", {
+      const response = await apiFetch("/api/settings", {
         method: "PUT",
         headers: getRequestHeaders(),
         body: JSON.stringify({
@@ -3264,9 +3583,8 @@ function handleCategoryModalSave() {
  */
 async function loadSettings() {
   try {
-    const response = await fetch("/api/settings", {
+    const response = await apiFetch("/api/settings", {
       cache: "no-store",
-      headers: { Accept: "application/json" },
     });
     if (!response.ok) throw new Error("Failed to load settings");
 

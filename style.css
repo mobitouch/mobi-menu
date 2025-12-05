@@ -565,6 +565,71 @@ header {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.menu-item.unavailable {
+  opacity: 0.6;
+  position: relative;
+}
+
+.menu-item.unavailable::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.menu-item.unavailable:hover {
+  transform: translateY(-2px);
+  opacity: 0.7;
+}
+
+.menu-item.unavailable .menu-item-content {
+  position: relative;
+  z-index: 2;
+}
+
+.unavailable-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  background: rgba(244, 67, 54, 0.9);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.schedule-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.3px;
+  margin-left: auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+.schedule-badge.available {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+}
+
+.schedule-badge.unavailable {
+  background: rgba(255, 152, 0, 0.9);
+  color: white;
+}
+
 .menu-item:focus-within {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
@@ -611,6 +676,10 @@ header {
   transform: scale(1.05);
 }
 
+.menu-item.unavailable:hover .menu-item-image {
+  transform: scale(1);
+}
+
 .item-header {
   display: flex;
   justify-content: space-between;
@@ -619,6 +688,7 @@ header {
   margin-bottom: 0.25rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
 }
 
 .item-name {
@@ -795,6 +865,12 @@ footer a:hover {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
+  }
+
+  .unavailable-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    margin-top: 0.25rem;
   }
 
   .item-name {

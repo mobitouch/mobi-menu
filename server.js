@@ -15,6 +15,23 @@ const compression = require("compression");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/**
+ * Simple logger utility - must be defined early as it's used throughout
+ */
+const logger = {
+  info: (message, ...args) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[INFO] ${new Date().toISOString()} - ${message}`, ...args);
+    }
+  },
+  error: (message, ...args) => {
+    console.error(`[ERROR] ${new Date().toISOString()} - ${message}`, ...args);
+  },
+  warn: (message, ...args) => {
+    console.warn(`[WARN] ${new Date().toISOString()} - ${message}`, ...args);
+  },
+};
+
 // Trust proxy for accurate IP addresses (important for rate limiting)
 app.set("trust proxy", 1);
 
@@ -46,9 +63,22 @@ app.use(
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (process.env.NODE_ENV === "production" && !SESSION_SECRET) {
-  console.error("⚠️  ERROR: SESSION_SECRET is required in production!");
-  console.error("⚠️  Please set SESSION_SECRET in your .env file");
+  logger.error("SESSION_SECRET is required in production!");
+  logger.error("Please set SESSION_SECRET in your .env file");
   process.exit(1);
+}
+
+// Cookie security configuration
+// COOKIE_SECURE: Set to 'true' only if using HTTPS (default: false for HTTP)
+// COOKIE_SAMESITE: 'strict', 'lax', or 'none' (default: 'lax' for better compatibility)
+const COOKIE_SECURE = process.env.COOKIE_SECURE === "true" || process.env.COOKIE_SECURE === "1";
+const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || (COOKIE_SECURE ? "strict" : "lax");
+
+// Warn if secure cookies are enabled but might not work
+if (COOKIE_SECURE && process.env.NODE_ENV === "production") {
+  logger.info("Secure cookies enabled - ensure you're using HTTPS");
+} else if (process.env.NODE_ENV === "production" && !COOKIE_SECURE) {
+  logger.warn("Secure cookies disabled - use HTTPS in production with reverse proxy");
 }
 
 app.use(
@@ -60,9 +90,9 @@ app.use(
     saveUninitialized: false,
     name: "sessionId",
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: COOKIE_SECURE,
       httpOnly: true,
-      sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+      sameSite: COOKIE_SAMESITE,
       maxAge: 24 * 60 * 60 * 1000,
     },
     rolling: true,
@@ -72,10 +102,8 @@ app.use(
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 if (!ADMIN_PASSWORD) {
-  console.error("⚠️  WARNING: ADMIN_PASSWORD is not set in .env file!");
-  console.error(
-    "⚠️  Please create a .env file with ADMIN_PASSWORD=your_password"
-  );
+  logger.error("ADMIN_PASSWORD is not set in .env file!");
+  logger.error("Please create a .env file with ADMIN_PASSWORD=your_password");
   process.exit(1);
 }
 
@@ -177,9 +205,7 @@ async function readMenuData() {
     const parsed = JSON.parse(data);
 
     if (!Array.isArray(parsed)) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("Invalid menu data format, returning empty array");
-      }
+      logger.warn("Invalid menu data format, returning empty array");
       return [];
     }
 
@@ -194,9 +220,7 @@ async function readMenuData() {
       await writeMenuData([]);
       return [];
     }
-    if (process.env.NODE_ENV !== "production") {
-      console.error("Error reading menu data:", error);
-    }
+    logger.error("Error reading menu data:", error.message);
     return cache.menuData || [];
   }
 }
@@ -278,9 +302,7 @@ async function writeMenuData(data) {
       releaseLock("menuData");
       return true;
     } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("Error writing menu data:", error);
-      }
+      logger.error("Error writing menu data:", error.message);
       try {
         await fs.unlink(`${DATA_FILE}.tmp`);
       } catch (unlinkError) {
@@ -353,9 +375,7 @@ async function readSettings() {
     cache.settingsTimestamp = now;
     return defaultSettings;
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("Error reading settings:", error);
-    }
+    logger.error("Error reading settings:", error.message);
     // Return cached settings if available, otherwise defaults
     return cache.settings || getDefaultSettings();
   }
@@ -392,9 +412,7 @@ async function writeSettings(data) {
       releaseLock("settings");
       return true;
     } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("Error writing settings:", error);
-      }
+      logger.error("Error writing settings:", error.message);
       try {
         await fs.unlink(`${SETTINGS_FILE}.tmp`);
       } catch (unlinkError) {
@@ -420,13 +438,6 @@ async function writeSettings(data) {
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
-/**
- * Centralized error handler middleware
- * @param {Error} err - Error object
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next function
- */
 function errorHandler(err, req, res, next) {
   // Log error with context
   const errorInfo = {
@@ -436,24 +447,49 @@ function errorHandler(err, req, res, next) {
     method: req.method,
     ip: req.ip || req.connection?.remoteAddress,
     timestamp: new Date().toISOString(),
+    userAgent: req.get("user-agent"),
   };
 
-  if (process.env.NODE_ENV !== "production") {
-    console.error("Error Details:", errorInfo);
-  } else {
-    console.error(`Error [${errorInfo.method} ${errorInfo.url}]: ${errorInfo.message}`);
+  // Determine error type and status code
+  let statusCode = err.statusCode || 500;
+  let userMessage = "An error occurred. Please try again.";
+
+  // Handle specific error types
+  if (err.name === "ValidationError") {
+    statusCode = 400;
+    userMessage = err.message || "Invalid input data";
+  } else if (err.name === "UnauthorizedError") {
+    statusCode = 401;
+    userMessage = "Authentication required";
+  } else if (err.code === "ENOENT") {
+    statusCode = 404;
+    userMessage = "Resource not found";
+  } else if (err.code === "EACCES" || err.code === "EPERM") {
+    statusCode = 503;
+    userMessage = "Service temporarily unavailable";
   }
 
-  const statusCode = err.statusCode || 500;
-  const message =
-    process.env.NODE_ENV === "production"
-      ? "Internal server error"
-      : err.message;
+  // Log error appropriately
+  if (statusCode >= 500) {
+    logger.error(`[${errorInfo.method} ${errorInfo.url}] ${errorInfo.message}`, {
+      ip: errorInfo.ip,
+      stack: process.env.NODE_ENV !== "production" ? errorInfo.stack : undefined,
+    });
+  } else {
+    logger.warn(`[${errorInfo.method} ${errorInfo.url}] ${errorInfo.message}`, {
+      ip: errorInfo.ip,
+      statusCode,
+    });
+  }
 
+  // Send error response
   res.status(statusCode).json({
     success: false,
-    error: message,
-    ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+    error: process.env.NODE_ENV === "production" ? userMessage : err.message,
+    ...(process.env.NODE_ENV !== "production" && { 
+      stack: err.stack,
+      details: errorInfo 
+    }),
   });
 }
 
@@ -464,11 +500,40 @@ function errorHandler(err, req, res, next) {
  * @param {Function} next - Express next function
  */
 function requireAuth(req, res, next) {
-  if (req.session.isAuthenticated) {
-    next();
-  } else {
-    res.status(401).json({ error: "Unauthorized" });
+  if (!req.session.isAuthenticated) {
+    return res.status(401).json({ 
+      success: false,
+      error: "Unauthorized",
+      message: "Authentication required. Please log in." 
+    });
   }
+
+  // Check session timeout (30 minutes of inactivity)
+  const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  const now = Date.now();
+  
+  // Initialize lastActivity if not set (for existing sessions)
+  if (!req.session.lastActivity) {
+    req.session.lastActivity = now;
+  }
+  
+  const lastActivity = req.session.lastActivity;
+  const timeSinceLastActivity = now - lastActivity;
+
+  if (timeSinceLastActivity > SESSION_TIMEOUT) {
+    req.session.destroy(() => {
+      return res.status(401).json({ 
+        success: false,
+        error: "Session expired",
+        message: "Your session has expired. Please log in again." 
+      });
+    });
+    return;
+  }
+
+  // Update last activity timestamp
+  req.session.lastActivity = now;
+  next();
 }
 
 /**
@@ -606,7 +671,437 @@ function validateMenuItem(item) {
     }
   }
 
+  // Validate available field (optional, defaults to true)
+  if (item.available !== undefined && typeof item.available !== "boolean") {
+    return {
+      valid: false,
+      error: "Available field must be a boolean",
+    };
+  }
+
+  // Validate unavailableReason (optional)
+  if (item.unavailableReason) {
+    if (typeof item.unavailableReason !== "string") {
+      return {
+        valid: false,
+        error: "Unavailable reason must be a string",
+      };
+    }
+    const sanitizedReason = sanitizeString(item.unavailableReason);
+    if (sanitizedReason.length > 200) {
+      return {
+        valid: false,
+        error: "Unavailable reason must be 200 characters or less",
+      };
+    }
+  }
+
+  // Validate schedule (optional)
+  if (item.schedule) {
+    if (typeof item.schedule !== "object" || Array.isArray(item.schedule)) {
+      return {
+        valid: false,
+        error: "Schedule must be an object",
+      };
+    }
+
+    // Validate days (array of 0-6, where 0 = Sunday)
+    if (item.schedule.days) {
+      if (!Array.isArray(item.schedule.days)) {
+        return {
+          valid: false,
+          error: "Schedule days must be an array",
+        };
+      }
+      if (item.schedule.days.length === 0) {
+        return {
+          valid: false,
+          error: "Schedule days cannot be empty",
+        };
+      }
+      for (const day of item.schedule.days) {
+        if (typeof day !== "number" || day < 0 || day > 6 || !Number.isInteger(day)) {
+          return {
+            valid: false,
+            error: "Schedule days must be integers between 0 (Sunday) and 6 (Saturday)",
+          };
+        }
+      }
+    }
+
+    // Validate timeRange
+    if (item.schedule.timeRange) {
+      if (typeof item.schedule.timeRange !== "object" || Array.isArray(item.schedule.timeRange)) {
+        return {
+          valid: false,
+          error: "Schedule timeRange must be an object",
+        };
+      }
+
+      // Validate start time (HH:MM format)
+      if (item.schedule.timeRange.start) {
+        if (typeof item.schedule.timeRange.start !== "string") {
+          return {
+            valid: false,
+            error: "Schedule start time must be a string",
+          };
+        }
+        if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(item.schedule.timeRange.start)) {
+          return {
+            valid: false,
+            error: "Schedule start time must be in HH:MM format (24-hour)",
+          };
+        }
+      }
+
+      // Validate end time (HH:MM format)
+      if (item.schedule.timeRange.end) {
+        if (typeof item.schedule.timeRange.end !== "string") {
+          return {
+            valid: false,
+            error: "Schedule end time must be a string",
+          };
+        }
+        if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(item.schedule.timeRange.end)) {
+          return {
+            valid: false,
+            error: "Schedule end time must be in HH:MM format (24-hour)",
+          };
+        }
+      }
+
+      // Validate that end is after start if both are provided
+      if (item.schedule.timeRange.start && item.schedule.timeRange.end) {
+        const [startH, startM] = item.schedule.timeRange.start.split(":").map(Number);
+        const [endH, endM] = item.schedule.timeRange.end.split(":").map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        
+        // Allow end time to be before start (for overnight schedules like 22:00-02:00)
+        // But validate the format is correct
+        if (startMinutes === endMinutes) {
+          return {
+            valid: false,
+            error: "Schedule start and end times cannot be the same",
+          };
+        }
+      }
+    }
+
+    // Validate dateRange (optional)
+    if (item.schedule.dateRange) {
+      if (typeof item.schedule.dateRange !== "object" || Array.isArray(item.schedule.dateRange)) {
+        return {
+          valid: false,
+          error: "Schedule dateRange must be an object",
+        };
+      }
+
+      // Validate start date (YYYY-MM-DD format)
+      if (item.schedule.dateRange.start) {
+        if (typeof item.schedule.dateRange.start !== "string") {
+          return {
+            valid: false,
+            error: "Schedule start date must be a string",
+          };
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(item.schedule.dateRange.start)) {
+          return {
+            valid: false,
+            error: "Schedule start date must be in YYYY-MM-DD format",
+          };
+        }
+        const startDate = new Date(item.schedule.dateRange.start);
+        if (isNaN(startDate.getTime())) {
+          return {
+            valid: false,
+            error: "Schedule start date is invalid",
+          };
+        }
+      }
+
+      // Validate end date (YYYY-MM-DD format)
+      if (item.schedule.dateRange.end) {
+        if (typeof item.schedule.dateRange.end !== "string") {
+          return {
+            valid: false,
+            error: "Schedule end date must be a string",
+          };
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(item.schedule.dateRange.end)) {
+          return {
+            valid: false,
+            error: "Schedule end date must be in YYYY-MM-DD format",
+          };
+        }
+        const endDate = new Date(item.schedule.dateRange.end);
+        if (isNaN(endDate.getTime())) {
+          return {
+            valid: false,
+            error: "Schedule end date is invalid",
+          };
+        }
+      }
+
+      // Validate that end is after start if both are provided
+      if (item.schedule.dateRange.start && item.schedule.dateRange.end) {
+        const startDate = new Date(item.schedule.dateRange.start);
+        const endDate = new Date(item.schedule.dateRange.end);
+        if (endDate < startDate) {
+          return {
+            valid: false,
+            error: "Schedule end date must be after start date",
+          };
+        }
+      }
+    }
+  }
+
   return { valid: true };
+}
+
+/**
+ * Check if an item is currently available based on its schedule
+ * @param {Object} item - Menu item with optional schedule
+ * @returns {Object} { isAvailable: boolean, reason?: string, nextAvailable?: Date }
+ */
+function checkScheduleAvailability(item) {
+  // If no schedule, item is always available (unless manually set to unavailable)
+  if (!item.schedule) {
+    return { isAvailable: true };
+  }
+
+  const now = new Date();
+  const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
+  const currentTime = now.getHours() * 60 + now.getMinutes(); // Minutes since midnight
+
+  // Check date range if specified
+  if (item.schedule.dateRange) {
+    const todayStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
+    
+    if (item.schedule.dateRange.start && todayStr < item.schedule.dateRange.start) {
+      const startDate = new Date(item.schedule.dateRange.start);
+      return {
+        isAvailable: false,
+        reason: `Available starting ${formatDate(startDate)}`,
+        nextAvailable: startDate,
+      };
+    }
+    
+    if (item.schedule.dateRange.end && todayStr > item.schedule.dateRange.end) {
+      return {
+        isAvailable: false,
+        reason: "This item is no longer available",
+      };
+    }
+  }
+
+  // Check days of week if specified
+  if (item.schedule.days && item.schedule.days.length > 0) {
+    if (!item.schedule.days.includes(currentDay)) {
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const nextDay = findNextScheduledDay(currentDay, item.schedule.days);
+      const nextDayName = dayNames[nextDay];
+      return {
+        isAvailable: false,
+        reason: `Available on ${item.schedule.days.map(d => dayNames[d]).join(", ")}`,
+        nextAvailable: getNextScheduledDateTime(now, nextDay, item.schedule.timeRange),
+      };
+    }
+  }
+
+  // Check time range if specified
+  if (item.schedule.timeRange) {
+    const { start, end } = item.schedule.timeRange;
+    
+    if (start && end) {
+      const [startH, startM] = start.split(":").map(Number);
+      const [endH, endM] = end.split(":").map(Number);
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+      
+      let isInTimeRange;
+      if (endMinutes > startMinutes) {
+        // Normal case: 09:00 - 17:00
+        isInTimeRange = currentTime >= startMinutes && currentTime < endMinutes;
+      } else {
+        // Overnight case: 22:00 - 02:00
+        isInTimeRange = currentTime >= startMinutes || currentTime < endMinutes;
+      }
+
+      if (!isInTimeRange) {
+        // Calculate next available time
+        let nextAvailable;
+        if (currentTime < startMinutes) {
+          // Before start time today
+          nextAvailable = new Date(now);
+          nextAvailable.setHours(startH, startM, 0, 0);
+        } else {
+          // After end time, next available is start time tomorrow
+          nextAvailable = new Date(now);
+          nextAvailable.setDate(nextAvailable.getDate() + 1);
+          nextAvailable.setHours(startH, startM, 0, 0);
+        }
+
+        return {
+          isAvailable: false,
+          reason: `Available ${formatTime(start)} - ${formatTime(end)}`,
+          nextAvailable: nextAvailable,
+        };
+      }
+    } else if (start) {
+      // Only start time specified (available from this time)
+      const [startH, startM] = start.split(":").map(Number);
+      const startMinutes = startH * 60 + startM;
+      
+      if (currentTime < startMinutes) {
+        const nextAvailable = new Date(now);
+        nextAvailable.setHours(startH, startM, 0, 0);
+        return {
+          isAvailable: false,
+          reason: `Available from ${formatTime(start)}`,
+          nextAvailable: nextAvailable,
+        };
+      }
+    } else if (end) {
+      // Only end time specified (available until this time)
+      const [endH, endM] = end.split(":").map(Number);
+      const endMinutes = endH * 60 + endM;
+      
+      if (currentTime >= endMinutes) {
+        return {
+          isAvailable: false,
+          reason: `Available until ${formatTime(end)}`,
+        };
+      }
+    }
+  }
+
+  return { isAvailable: true };
+}
+
+/**
+ * Find the next scheduled day from current day
+ * @param {number} currentDay - Current day (0-6)
+ * @param {Array<number>} scheduledDays - Array of scheduled days
+ * @returns {number} Next scheduled day
+ */
+function findNextScheduledDay(currentDay, scheduledDays) {
+  // Sort scheduled days
+  const sorted = [...scheduledDays].sort((a, b) => a - b);
+  
+  // Find next day this week
+  for (const day of sorted) {
+    if (day > currentDay) {
+      return day;
+    }
+  }
+  
+  // If no day found this week, return first day next week
+  return sorted[0];
+}
+
+/**
+ * Get next scheduled date/time
+ * @param {Date} now - Current date
+ * @param {number} nextDay - Next scheduled day (0-6)
+ * @param {Object} timeRange - Optional time range
+ * @returns {Date} Next available date/time
+ */
+function getNextScheduledDateTime(now, nextDay, timeRange) {
+  const next = new Date(now);
+  const daysUntilNext = (nextDay - now.getDay() + 7) % 7 || 7;
+  next.setDate(next.getDate() + daysUntilNext);
+  
+  if (timeRange && timeRange.start) {
+    const [startH, startM] = timeRange.start.split(":").map(Number);
+    next.setHours(startH, startM, 0, 0);
+  } else {
+    next.setHours(0, 0, 0, 0);
+  }
+  
+  return next;
+}
+
+/**
+ * Format time for display (HH:MM to 12-hour format)
+ * @param {string} time24 - Time in 24-hour format (HH:MM)
+ * @returns {string} Formatted time
+ */
+function formatTime(time24) {
+  const [hours, minutes] = time24.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${minutes.toString().padStart(2, "0")} ${period}`;
+}
+
+/**
+ * Format date for display
+ * @param {Date} date - Date to format
+ * @returns {string} Formatted date
+ */
+function formatDate(date) {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+/**
+ * Sanitize schedule object
+ * @param {Object} schedule - Schedule object to sanitize
+ * @returns {Object} Sanitized schedule object
+ */
+function sanitizeSchedule(schedule) {
+  if (!schedule || typeof schedule !== "object" || Array.isArray(schedule)) {
+    return null;
+  }
+
+  const sanitized = {};
+
+  // Sanitize days array
+  if (schedule.days && Array.isArray(schedule.days)) {
+    sanitized.days = schedule.days
+      .filter(day => typeof day === "number" && day >= 0 && day <= 6 && Number.isInteger(day))
+      .map(day => Number(day))
+      .filter((day, index, arr) => arr.indexOf(day) === index); // Remove duplicates
+    if (sanitized.days.length === 0) {
+      delete sanitized.days;
+    }
+  }
+
+  // Sanitize timeRange
+  if (schedule.timeRange && typeof schedule.timeRange === "object" && !Array.isArray(schedule.timeRange)) {
+    sanitized.timeRange = {};
+    if (schedule.timeRange.start && typeof schedule.timeRange.start === "string" && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(schedule.timeRange.start)) {
+      sanitized.timeRange.start = schedule.timeRange.start;
+    }
+    if (schedule.timeRange.end && typeof schedule.timeRange.end === "string" && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(schedule.timeRange.end)) {
+      sanitized.timeRange.end = schedule.timeRange.end;
+    }
+    if (Object.keys(sanitized.timeRange).length === 0) {
+      delete sanitized.timeRange;
+    }
+  }
+
+  // Sanitize dateRange
+  if (schedule.dateRange && typeof schedule.dateRange === "object" && !Array.isArray(schedule.dateRange)) {
+    sanitized.dateRange = {};
+    if (schedule.dateRange.start && typeof schedule.dateRange.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(schedule.dateRange.start)) {
+      sanitized.dateRange.start = schedule.dateRange.start;
+    }
+    if (schedule.dateRange.end && typeof schedule.dateRange.end === "string" && /^\d{4}-\d{2}-\d{2}$/.test(schedule.dateRange.end)) {
+      sanitized.dateRange.end = schedule.dateRange.end;
+    }
+    if (Object.keys(sanitized.dateRange).length === 0) {
+      delete sanitized.dateRange;
+    }
+  }
+
+  // Return null if schedule is empty
+  if (Object.keys(sanitized).length === 0) {
+    return null;
+  }
+
+  return sanitized;
 }
 
 // ============================================================================
@@ -703,22 +1198,33 @@ app.post("/api/auth/login", rateLimitLogin, async (req, res, next) => {
     }
 
     // Constant-time comparison to prevent timing attacks
-    if (password.length !== ADMIN_PASSWORD.length) {
-      recordFailedLogin(clientIp);
-      res.status(401).json({ success: false, message: "Invalid credentials" });
-      return;
-    }
-
-    let isValid = true;
-    for (let i = 0; i < password.length; i++) {
-      if (password[i] !== ADMIN_PASSWORD[i]) {
-        isValid = false;
+    // Use crypto.timingSafeEqual for true constant-time comparison
+    let isValid = false;
+    try {
+      const passwordBuffer = Buffer.from(password, 'utf8');
+      const adminPasswordBuffer = Buffer.from(ADMIN_PASSWORD, 'utf8');
+      
+      // If lengths differ, passwords don't match (but still do comparison for constant time)
+      if (passwordBuffer.length !== adminPasswordBuffer.length) {
+        // Create dummy comparison with same-length buffers to prevent timing attacks
+        const maxLength = Math.max(passwordBuffer.length, adminPasswordBuffer.length);
+        const dummyBuffer1 = Buffer.alloc(maxLength, 0);
+        const dummyBuffer2 = Buffer.alloc(maxLength, 0);
+        crypto.timingSafeEqual(dummyBuffer1, dummyBuffer2); // Dummy comparison
+        isValid = false; // Lengths differ, so passwords don't match
+      } else {
+        // Lengths match, do actual comparison
+        isValid = crypto.timingSafeEqual(passwordBuffer, adminPasswordBuffer);
       }
+    } catch (error) {
+      // If comparison fails (e.g., buffer length mismatch), treat as invalid
+      isValid = false;
     }
 
     if (isValid) {
       clearLoginAttempts(clientIp);
       req.session.isAuthenticated = true;
+      req.session.lastActivity = Date.now();
       res.json({ success: true, message: "Login successful" });
     } else {
       recordFailedLogin(clientIp);
@@ -790,7 +1296,30 @@ app.get("/api/menu", requireAuth, async (req, res, next) => {
  */
 app.post("/api/menu", requireAuth, csrfProtection, async (req, res, next) => {
   try {
+    // Validate request body exists
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request body",
+      });
+    }
+
     const { name, category, price, description, tags, image } = req.body;
+
+    // Validate required fields
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Item name is required",
+      });
+    }
+
+    if (!category || typeof category !== "string" || category.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Category is required",
+      });
+    }
 
     // Handle tags - can be array or comma-separated string
     let tagsArray = [];
@@ -812,6 +1341,9 @@ app.post("/api/menu", requireAuth, csrfProtection, async (req, res, next) => {
       description: sanitizeString(String(description || "")),
       tags: tagsArray.map(tag => sanitizeString(tag)),
       image: image ? String(image).trim() : null, // Store base64 image or null
+      available: req.body.available !== undefined ? Boolean(req.body.available) : true, // Default to available
+      unavailableReason: req.body.unavailableReason ? sanitizeString(String(req.body.unavailableReason)) : null,
+      schedule: req.body.schedule ? sanitizeSchedule(req.body.schedule) : null,
     };
 
     const validation = validateMenuItem(newItem);
@@ -890,6 +1422,13 @@ app.put("/api/menu/:id", requireAuth, csrfProtection, async (req, res, next) => 
       description: sanitizeString(String(description || "")),
       tags: tagsArray.map(tag => sanitizeString(tag)),
       image: image !== undefined ? (image ? String(image).trim() : null) : existingItem?.image || null, // Keep existing image if not provided
+      available: req.body.available !== undefined ? Boolean(req.body.available) : (existingItem?.available !== undefined ? existingItem.available : true), // Preserve existing or default to true
+      unavailableReason: req.body.unavailableReason !== undefined 
+        ? (req.body.unavailableReason ? sanitizeString(String(req.body.unavailableReason)) : null)
+        : existingItem?.unavailableReason || null, // Preserve existing if not provided
+      schedule: req.body.schedule !== undefined 
+        ? (req.body.schedule ? sanitizeSchedule(req.body.schedule) : null)
+        : existingItem?.schedule || null, // Preserve existing if not provided
     };
 
     const validation = validateMenuItem(updatedItem);
@@ -923,6 +1462,71 @@ app.put("/api/menu/:id", requireAuth, csrfProtection, async (req, res, next) => 
       res.status(500).json({
         success: false,
         message: "Failed to update item",
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/menu/:id/availability
+ * Toggle availability status of a menu item
+ */
+app.patch("/api/menu/:id/availability", requireAuth, csrfProtection, async (req, res, next) => {
+  try {
+    const itemId = parseInt(req.params.id);
+    const { available, unavailableReason } = req.body;
+
+    if (isNaN(itemId) || itemId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid item ID",
+      });
+    }
+
+    const menuData = await readMenuData();
+    const itemIndex = menuData.findIndex((item) => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found",
+      });
+    }
+
+    // Update availability
+    if (available !== undefined) {
+      menuData[itemIndex].available = Boolean(available);
+      if (available === false && unavailableReason) {
+        menuData[itemIndex].unavailableReason = sanitizeString(String(unavailableReason));
+      } else if (available === true) {
+        menuData[itemIndex].unavailableReason = null;
+      }
+    } else {
+      // Toggle if not specified - default to true if not set
+      const currentAvailable = menuData[itemIndex].available !== false;
+      menuData[itemIndex].available = !currentAvailable;
+      if (menuData[itemIndex].available === false && unavailableReason) {
+        menuData[itemIndex].unavailableReason = sanitizeString(String(unavailableReason));
+      } else if (menuData[itemIndex].available === true) {
+        menuData[itemIndex].unavailableReason = null;
+      }
+    }
+
+    const success = await writeMenuData(menuData);
+    if (success) {
+      logger.info(`Menu item availability toggled (ID: ${itemId}, Available: ${menuData[itemIndex].available})`, { ip: req.ip });
+      res.json({
+        success: true,
+        message: `Item ${menuData[itemIndex].available ? "marked as available" : "marked as unavailable"}`,
+        item: menuData[itemIndex],
+      });
+    } else {
+      logger.error(`Failed to update menu item availability (ID: ${itemId})`, { ip: req.ip });
+      res.status(500).json({
+        success: false,
+        message: "Failed to update item availability. Please try again.",
       });
     }
   } catch (error) {
@@ -1067,6 +1671,23 @@ app.post("/api/menu/import", requireAuth, csrfProtection, async (req, res, next)
           }
         }
 
+        // Preserve availability status if present
+        if (item.available !== undefined) {
+          validItem.available = Boolean(item.available);
+        } else {
+          validItem.available = true; // Default to available
+        }
+
+        // Preserve unavailable reason if present
+        if (item.unavailableReason && typeof item.unavailableReason === "string") {
+          validItem.unavailableReason = sanitizeString(item.unavailableReason);
+        }
+
+        // Preserve schedule if present
+        if (item.schedule) {
+          validItem.schedule = sanitizeSchedule(item.schedule);
+        }
+
         // Preserve ID if present and valid (for replace mode)
         if (
           item.id &&
@@ -1158,12 +1779,26 @@ app.post("/api/menu/import", requireAuth, csrfProtection, async (req, res, next)
 /**
  * GET /data.json
  * Public endpoint to get menu data (no auth required)
+ * Includes all items, including unavailable ones (marked with available: false)
+ * Adds schedule availability information to each item
  */
 app.get("/data.json", async (req, res, next) => {
   try {
     const menuData = await readMenuData();
-    res.set("Cache-Control", "public, max-age=300");
-    res.json(menuData);
+    
+    // Add schedule availability information to each item
+    const itemsWithSchedule = menuData.map(item => {
+      const scheduleInfo = checkScheduleAvailability(item);
+      return {
+        ...item,
+        scheduleAvailability: scheduleInfo,
+        // If item is manually unavailable OR schedule says unavailable, mark as unavailable
+        isCurrentlyAvailable: item.available !== false && scheduleInfo.isAvailable,
+      };
+    });
+    
+    res.set("Cache-Control", "public, max-age=60"); // Reduced cache time for schedule accuracy
+    res.json(itemsWithSchedule);
   } catch (error) {
     next(error);
   }
@@ -1302,60 +1937,58 @@ const server = app.listen(PORT, () => {
   
   if (!isProduction) {
     // Development logging
-    console.log("=".repeat(50));
-    console.log("🚀 Lorem Ipsum Admin Server Started");
-    console.log("=".repeat(50));
-    console.log(`📊 Admin panel: http://localhost:${PORT}/loginadminonly.html`);
-    console.log(`🏠 Main website: http://localhost:${PORT}/index.html`);
-    console.log(`🔐 Environment: ${process.env.NODE_ENV || "development"}`);
-    console.log(`✅ Environment variables loaded successfully`);
-    console.log(`⚡ Compression: Enabled`);
-    console.log(`💾 Caching: Enabled (${cache.CACHE_TTL}ms TTL)`);
-    console.log("=".repeat(50));
+    logger.info("=".repeat(50));
+    logger.info("Lorem Ipsum Admin Server Started");
+    logger.info("=".repeat(50));
+    logger.info(`Admin panel: http://localhost:${PORT}/loginadminonly.html`);
+    logger.info(`Main website: http://localhost:${PORT}/index.html`);
+    logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+    logger.info(`Environment variables loaded successfully`);
+    logger.info(`Compression: Enabled`);
+    logger.info(`Caching: Enabled (${cache.CACHE_TTL}ms TTL)`);
+    logger.info("=".repeat(50));
   } else {
     // Production logging (minimal)
-    console.log(`Server started on port ${PORT}`);
-    console.log(`Environment: production`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
+    logger.info(`Server started on port ${PORT}`);
+    logger.info(`Environment: production`);
+    logger.info(`Health check: http://localhost:${PORT}/health`);
   }
 });
 
 // Handle server errors (e.g., port already in use)
 server.on("error", (error) => {
   if (error.code === "EADDRINUSE") {
-    console.error("=".repeat(50));
-    console.error("❌ ERROR: Port " + PORT + " is already in use!");
-    console.error("=".repeat(50));
-    console.error("Please either:");
-    console.error("  1. Stop the process using port " + PORT);
-    console.error(
-      "  2. Use a different port by setting PORT environment variable"
-    );
-    console.error("");
-    console.error("To find and kill the process on Windows:");
-    console.error(`  netstat -ano | findstr :${PORT}`);
-    console.error(`  taskkill /PID <PID> /F`);
-    console.error("=".repeat(50));
+    logger.error("=".repeat(50));
+    logger.error(`Port ${PORT} is already in use!`);
+    logger.error("=".repeat(50));
+    logger.error("Please either:");
+    logger.error(`  1. Stop the process using port ${PORT}`);
+    logger.error("  2. Use a different port by setting PORT environment variable");
+    logger.error("");
+    logger.error("To find and kill the process:");
+    logger.error(`  Linux/Mac: lsof -ti:${PORT} | xargs kill -9`);
+    logger.error(`  Windows: netstat -ano | findstr :${PORT} && taskkill /PID <PID> /F`);
+    logger.error("=".repeat(50));
     process.exit(1);
   } else {
-    console.error("Server error:", error);
+    logger.error("Server error:", error.message);
     process.exit(1);
   }
 });
 
 // Graceful shutdown handling
 process.on("SIGTERM", () => {
-  console.log("\nSIGTERM signal received: closing HTTP server");
+  logger.info("SIGTERM signal received: closing HTTP server");
   server.close(() => {
-    console.log("HTTP server closed");
+    logger.info("HTTP server closed");
     process.exit(0);
   });
 });
 
 process.on("SIGINT", () => {
-  console.log("\nSIGINT signal received: closing HTTP server");
+  logger.info("SIGINT signal received: closing HTTP server");
   server.close(() => {
-    console.log("HTTP server closed");
+    logger.info("HTTP server closed");
     process.exit(0);
   });
 });

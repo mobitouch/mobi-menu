@@ -1605,6 +1605,61 @@ body.light-theme .login-submit-btn:hover {
   margin-bottom: 8px;
 }
 
+.availability-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.availability-badge.available {
+  background: rgba(76, 175, 80, 0.2);
+  color: var(--success-color);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.availability-badge.unavailable {
+  background: rgba(244, 67, 54, 0.2);
+  color: var(--error-color);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.schedule-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(255, 152, 0, 0.2);
+  color: var(--warning-color);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.btn-available {
+  background: var(--success-color);
+  color: white;
+}
+
+.btn-available:hover {
+  background: #43a047;
+}
+
+.btn-unavailable {
+  background: var(--error-color);
+  color: white;
+}
+
+.btn-unavailable:hover {
+  background: #e53935;
+}
+
 .item-description {
   color: var(--text-secondary);
   font-size: 12px;
@@ -1652,7 +1707,9 @@ body.light-theme .login-submit-btn:hover {
 
 .btn-edit,
 .btn-delete,
-.btn-duplicate {
+.btn-duplicate,
+.btn-available,
+.btn-unavailable {
   flex: 1;
   min-width: 0;
   padding: 6px 8px;
@@ -1670,7 +1727,9 @@ body.light-theme .login-submit-btn:hover {
 }
 
 .btn-edit svg,
-.btn-delete svg {
+.btn-delete svg,
+.btn-available svg,
+.btn-unavailable svg {
   width: 12px;
   height: 12px;
 }
